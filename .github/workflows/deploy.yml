@@ -10,49 +10,53 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout Code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: 🔐 Docker Login
+      - name: Docker Login
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: 🐳 Build Docker Image
+      - name: Build Docker Image
         run: docker build -t monlaine123/monlai:latest .
 
-      - name: 📤 Push to Docker Hub
+      - name: Push to Docker Hub
         run: docker push monlaine123/monlai:latest
 
-      - name: 🔐 Set up SSH
+      - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+  mediu: 0
+    ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-      - name: 🚀 Deploy to EC2
-        shell: bash
-        run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} << 'EOF'
-  set -e
-  
-  echo "📁 Ensuring project directory"
-  mkdir -p ${{ secrets.EC2_PROJECT_DIR }}
-  cd ${{ secrets.EC2_PROJECT_DIR }} || { echo "❌ Failed to cd into project dir"; exit 1; }
-  
-  echo "🐳 Ensuring Docker is running"
-  sudo systemctl start docker || exit 1
-  sudo systemctl enable docker || exit 1
-  sudo usermod -aG docker ec2-user
-  
-  echo "🔧 Installing docker-compose (if missing)"
-  if ! command -v docker-compose &> /dev/null; then
-  sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-  sudo chmod +x /usr/local/bin/docker-compose
-  fi
-  
-  echo "🔐 Logging in to Docker Hub"
-  echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin || exit 1
-  
-  echo "📝 Writing .env file"
-  cat > .env <<EOT
+    - name: Create .env and Deploy on EC2
+      shell: bash
+      run: |
+        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} <<EOF
+        set -e
+        
+        echo "Ensuring project directory exists"
+        mkdir -p ${{ secrets.EC2_PROJECT_DIR }}
+        cd ${{ secrets.EC2_PROJECT_DIR }} || { echo "Failed to change to project directory"; exit 1; }
+        
+        echo "Ensuring Docker is running"
+        sudo systemctl start docker || { echo "Failed to start Docker"; exit 1; }
+        sudo systemctl enable docker
+        
+        echo "Ensuring ec2-user has Docker permissions"
+        sudo usermod -aG docker ec2-user
+        
+        echo "Ensuring docker-compose is installed"
+        if ! command -v docker-compose &> /dev/null; then
+          echo "Installing docker-compose"
+          sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          sudo chmod +x /usr/local/bin/docker-compose
+        fi
+        
+        echo "Logging in to Docker Hub"
+        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin || { echo "Docker login failed"; exit 1; }
+        
+        echo "Creating .env file"
+        cat > .env <<EOT
   ENV=${{ secrets.ENV }}
   REDIS_URL=${{ secrets.REDIS_URL }}
   RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
@@ -62,7 +66,7 @@ jobs:
   AWS_REGION=${{ secrets.AWS_REGION }}
   EOT
   
-  echo "📝 Writing docker-compose.yml"
+  echo "Creating docker-compose.yml"
   cat > docker-compose.yml <<EOT
 version: '3.8'
 services:
@@ -73,7 +77,6 @@ services:
       - "8082:8082"
     env_file:
       - .env
-
   customer:
     image: monlaine123/monlai:latest
     command: ["./main", "customer", "--port", "8081"]
@@ -83,21 +86,24 @@ services:
       - .env
   EOT
   
-  echo "✅ Validating .env and docker-compose.yml"
-  ls -l .env || exit 1
-  docker-compose config || exit 1
+  echo "Validating .env file"
+  ls -la .env || { echo ".env file not found"; exit 1; }
   
-  echo "⬇️ Pulling latest code"
+  echo "Validating docker-compose.yml"
+  docker-compose config || { echo "Invalid docker-compose.yml"; exit 1; }
+  
+  echo "Pulling latest code"
   if [ ! -d .git ]; then
-  git clone ${{ secrets.REPO_URL }} . || exit 1
+  echo "Cloning repository"
+  git clone ${{ secrets.REPO_URL }} .
   fi
-  git fetch origin || exit 1
-  git reset --hard origin/main || exit 1
+  git fetch origin || { echo "Git fetch failed"; exit 1; }
+  git reset --hard origin/main || { echo "Git reset failed"; exit 1; }
   
-  echo "♻️ Restarting services"
-  docker-compose down || exit 1
-  docker-compose pull || exit 1
-  docker-compose up -d || exit 1
+  echo "Restarting app"
+  docker-compose down || { echo "Failed to stop containers"; exit 1; }
+  docker-compose pull || { echo "Failed to pull images"; exit 1; }
+  docker-compose up --build -d || { echo "Failed to start containers"; exit 1; }
   
-  echo "✅ Deployment complete"
+  echo "Deployment complete"
   EOF

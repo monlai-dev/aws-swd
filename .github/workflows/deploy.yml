@@ -80,37 +80,4 @@ jobs:
           
           echo "📄 Writing docker-compose.yml"
           cat > docker-compose.yml <<EOT
-version: '3.8'
-services:
-  customer:
-    image: $IMAGE_NAME
-    command: ["./main", "customer", "--port", "8081"]
-    ports:
-      - "8081:8081"
-    env_file:
-      - .env
 
-  driver:
-    image: $IMAGE_NAME
-    command: ["./main", "driver", "--port", "8082"]
-    ports:
-      - "8082:8082"
-    env_file:
-      - .env
-        EOT
-        
-        echo "🚢 Pulling latest code"
-        if [ ! -d .git ]; then
-        git clone "$REPO_URL" . || exit 1
-        fi
-        git fetch origin
-        git reset --hard origin/main
-        
-        echo "🔄 Restarting services"
-        docker-compose down || true
-        docker-compose pull
-        docker-compose up -d
-        
-        echo "✅ Running containers:"
-        docker ps
-        EOF

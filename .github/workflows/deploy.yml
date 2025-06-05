@@ -13,6 +13,15 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      - name: Docker Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: Build Docker Image
+        run: docker build -t monlaine123/monlai:latest .
+
+      - name: Push to Docker Hub
+        run: docker push monlaine123/monlai:latest
+
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -24,10 +33,10 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} <<EOF
           set -e
 
-          echo "📁 Changing to project directory"
+          echo "Changing to project directory"
           cd ${{ secrets.EC2_PROJECT_DIR }}
 
-          echo "📝 Creating .env file"
+          echo "Creating .env file"
           cat > .env <<EOT
           ENV=${{ secrets.ENV }}
           REDIS_URL=${{ secrets.REDIS_URL }}
@@ -37,15 +46,15 @@ jobs:
           AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION=${{ secrets.AWS_REGION }}
           EOT
-  
-          echo "🔄 Pulling latest code"
+          
+          echo "Pulling latest code"
           git fetch origin
           git reset --hard origin/main
           
-          echo "🐳 Restarting app"
+          echo "Restarting app"
           docker-compose down
           docker-compose pull
           docker-compose up --build -d
           
-          echo "✅ Deployment complete"
+          echo "Deployment complete"
           EOF

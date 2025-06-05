@@ -97,20 +97,20 @@ services:
       - "8082:8082"
     env_file:
       - .env
-  EOT
-  
-  echo "🚢 Pulling latest code"
-  if [ ! -d .git ]; then
-  git clone "$REPO_URL" . || exit 1
-  fi
-  git fetch origin
-  git reset --hard origin/main
-  
-  echo "🔄 Restarting services"
-  docker-compose down || true
-  docker-compose pull
-  docker-compose up -d
-  
-  echo "✅ Running containers:"
-  docker ps
-  EOF
+        EOT
+        
+        echo "🚢 Pulling latest code"
+        if [ ! -d .git ]; then
+        git clone "$REPO_URL" . || exit 1
+        fi
+        git fetch origin
+        git reset --hard origin/main
+        
+        echo "🔄 Restarting services"
+        docker-compose down || true
+        docker-compose pull
+        docker-compose up -d
+        
+        echo "✅ Running containers:"
+        docker ps
+        EOF

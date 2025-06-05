@@ -69,17 +69,17 @@ jobs:
 
           echo "🧾 Writing .env file"
           cat > .env <<EOT
-  ENV=$ENV
-  REDIS_URL=$REDIS_URL
-  RDS_CONNECTION=$RDS_CONNECTION
-  SQS_QUEUE_URL=$SQS_QUEUE_URL
-  AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-  AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-  AWS_REGION=$AWS_REGION
-  EOT
-  
-  echo "📄 Writing docker-compose.yml"
-  cat > docker-compose.yml <<EOT
+          ENV=$ENV
+          REDIS_URL=$REDIS_URL
+          RDS_CONNECTION=$RDS_CONNECTION
+          SQS_QUEUE_URL=$SQS_QUEUE_URL
+          AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+          AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+          AWS_REGION=$AWS_REGION
+          EOT
+          
+          echo "📄 Writing docker-compose.yml"
+          cat > docker-compose.yml <<EOT
 version: '3.8'
 services:
   customer:

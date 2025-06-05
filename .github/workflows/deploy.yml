@@ -6,52 +6,55 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 📥 Checkout Code
+      - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: 🔐 Docker Login
-        run: |
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+      - name: Docker Login
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: 🐳 Build Docker Image
+      - name: Build Docker Image
         run: docker build -t monlaine123/monlai:latest .
 
-      - name: 📤 Push to Docker Hub
+      - name: Push to Docker Hub
         run: docker push monlaine123/monlai:latest
 
-      - name: 🔐 Set up SSH
+      - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-      - name: 🚀 SSH into EC2 and deploy
+      - name: Create .env and Deploy on EC2
         shell: bash
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} << 'EOF'
-            set -e
-            cd ${{ secrets.EC2_PROJECT_DIR }}
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} <<EOF
+          set -e
 
-            echo "📝 Writing docker-compose.yml"
-            cat > docker-compose.yml <<EOT
-version: '3.8'
+          echo "Changing to project directory"
+          cd ${{ secrets.EC2_PROJECT_DIR }}
 
-services:
-  monlai:
-    image: monlaine123/monlai:latest
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
-  EOT
-  
-  echo "📦 Deploying container"
-  docker-compose pull
-  docker-compose down
-  docker-compose up -d
-  
-  echo "✅ Deployment complete"
-  EOF
+          echo "Creating .env file"
+          cat > .env <<EOT
+          ENV=${{ secrets.ENV }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
+          SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          EOT
+          
+          echo "Pulling latest code"
+          git fetch origin
+          git reset --hard origin/main
+          
+          echo "Restarting app"
+          docker-compose down
+          docker-compose pull
+          docker-compose up --build -d
+          
+          echo "Deployment complete"
+          EOF

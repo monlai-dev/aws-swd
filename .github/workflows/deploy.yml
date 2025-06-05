@@ -43,28 +43,31 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          ssh -o StrictHostKeyChecking=no $EC2_HOST <<'EOF'
+          ssh -o StrictHostKeyChecking=no "$EC2_HOST" <<EOF
           set -e
 
-          echo "🔧 Create project dir"
-          mkdir -p $EC2_PROJECT_DIR && cd $EC2_PROJECT_DIR
+          echo "🔧 Creating project directory"
+          mkdir -p "$EC2_PROJECT_DIR"
+          cd "$EC2_PROJECT_DIR"
 
-          echo "🐳 Ensure Docker is ready"
+          echo "🐳 Ensuring Docker is running"
           sudo systemctl start docker || true
           sudo systemctl enable docker
           sudo usermod -aG docker ec2-user || true
 
-          echo "📦 Install docker-compose if missing"
+          echo "📦 Installing docker-compose if missing"
           if ! command -v docker-compose &> /dev/null; then
-            sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-\$(uname -s)-\$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
           fi
 
-          echo "🔐 Docker login"
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          echo "🔐 Logging in to Docker Hub"
+          echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-          echo "🧾 Write .env file"
+          echo "🧾 Writing .env file"
           cat > .env <<EOT
   ENV=$ENV
   REDIS_URL=$REDIS_URL
@@ -75,7 +78,7 @@ jobs:
   AWS_REGION=$AWS_REGION
   EOT
   
-  echo "🐳 Write docker-compose.yml"
+  echo "📄 Writing docker-compose.yml"
   cat > docker-compose.yml <<EOT
 version: '3.8'
 services:
@@ -96,9 +99,9 @@ services:
       - .env
   EOT
   
-  echo "🚢 Pull latest code"
+  echo "🚢 Pulling latest code"
   if [ ! -d .git ]; then
-  git clone $REPO_URL . || exit 1
+  git clone "$REPO_URL" . || exit 1
   fi
   git fetch origin
   git reset --hard origin/main

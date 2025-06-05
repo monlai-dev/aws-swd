@@ -25,49 +25,52 @@ jobs:
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
-  mediu: 0
-    ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-    - name: Create .env and Deploy on EC2
-      shell: bash
-      run: |
-        ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} <<EOF
-        set -e
-        
-        echo "Ensuring project directory exists"
-        mkdir -p ${{ secrets.EC2_PROJECT_DIR }}
-        cd ${{ secrets.EC2_PROJECT_DIR }} || { echo "Failed to change to project directory"; exit 1; }
-        
-        echo "Ensuring Docker is running"
-        sudo systemctl start docker || { echo "Failed to start Docker"; exit 1; }
-        sudo systemctl enable docker
-        
-        echo "Ensuring ec2-user has Docker permissions"
-        sudo usermod -aG docker ec2-user
-        
-        echo "Ensuring docker-compose is installed"
-        if ! command -v docker-compose &> /dev/null; then
-          echo "Installing docker-compose"
-          sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          sudo chmod +x /usr/local/bin/docker-compose
-        fi
-        
-        echo "Logging in to Docker Hub"
-        echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin || { echo "Docker login failed"; exit 1; }
-        
-        echo "Creating .env file"
-        cat > .env <<EOT
-  ENV=${{ secrets.ENV }}
-  REDIS_URL=${{ secrets.REDIS_URL }}
-  RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
-  SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
-  AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_REGION=${{ secrets.AWS_REGION }}
-  EOT
-  
-  echo "Creating docker-compose.yml"
-  cat > docker-compose.yml <<EOT
+      - name: Create .env and Deploy on EC2
+        shell: bash
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} <<EOF
+          set -e
+
+          echo "Ensuring project directory exists"
+          mkdir -p ${{ secrets.EC2_PROJECT_DIR }}
+          cd ${{ secrets.EC2_PROJECT_DIR }} || { echo "Failed to change to project directory"; exit 1; }
+
+          echo "Ensuring Docker is running"
+          sudo systemctl start docker || { echo "Failed to start Docker"; exit 1; }
+          sudo systemctl enable docker
+
+          echo "Ensuring ec2-user has Docker permissions"
+          sudo usermod -aG docker ec2-user || { echo "Failed to add ec2-user to docker group"; exit 1; }
+
+          echo "Ensuring docker-compose is installed"
+          if ! command -v docker-compose &> /dev/null; then
+            echo "Installing docker-compose"
+            sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+            sudo chmod +x /usr/local/bin/docker-compose
+          fi
+          docker-compose --version || { echo "docker-compose installation failed"; exit 1; }
+
+          echo "Logging in to Docker Hub"
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin || { echo "Docker login failed"; exit 1; }
+
+          echo "Creating .env file"
+          cat > .env <<EOT
+          ENV=${{ secrets.ENV }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
+          SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          EOT
+          
+          echo "Validating .env file"
+          ls -la .env || { echo ".env file not found"; exit 1; }
+          
+          echo "Creating docker-compose.yml"
+          cat > docker-compose.yml <<EOT
 version: '3.8'
 services:
   driver:
@@ -84,26 +87,26 @@ services:
       - "8081:8081"
     env_file:
       - .env
-  EOT
-  
-  echo "Validating .env file"
-  ls -la .env || { echo ".env file not found"; exit 1; }
-  
-  echo "Validating docker-compose.yml"
-  docker-compose config || { echo "Invalid docker-compose.yml"; exit 1; }
-  
-  echo "Pulling latest code"
-  if [ ! -d .git ]; then
-  echo "Cloning repository"
-  git clone ${{ secrets.REPO_URL }} .
-  fi
-  git fetch origin || { echo "Git fetch failed"; exit 1; }
-  git reset --hard origin/main || { echo "Git reset failed"; exit 1; }
-  
-  echo "Restarting app"
-  docker-compose down || { echo "Failed to stop containers"; exit 1; }
-  docker-compose pull || { echo "Failed to pull images"; exit 1; }
-  docker-compose up --build -d || { echo "Failed to start containers"; exit 1; }
-  
-  echo "Deployment complete"
-  EOF
+        EOT
+        
+        echo "Validating docker-compose.yml"
+        docker-compose config || { echo "Invalid docker-compose.yml"; exit 1; }
+        
+        echo "Pulling latest code"
+        if [ ! -d .git ]; then
+        echo "Cloning repository"
+        git clone ${{ secrets.REPO_URL }} . || { echo "Failed to clone repository"; exit 1; }
+        fi
+        git fetch origin || { echo "Git fetch failed"; exit 1; }
+        git reset --hard origin/main || { echo "Git reset failed"; exit 1; }
+        
+        echo "Restarting app"
+        docker-compose down || { echo "Failed to stop containers"; exit 1; }
+        docker-compose pull || { echo "Failed to pull images"; exit 1; }
+        docker-compose up --build -d || { echo "Failed to start containers"; exit 1; }
+        
+        echo "Verifying running containers"
+        docker ps || { echo "Failed to list containers"; exit 1; }
+        
+        echo "Deployment complete"
+        EOF

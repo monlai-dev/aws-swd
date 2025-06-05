@@ -35,7 +35,10 @@ jobs:
 
           echo "Changing to project directory"
           cd ${{ secrets.EC2_PROJECT_DIR }}
-
+          
+          echo "Logging in to Docker Hub"
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          
           echo "Creating .env file"
           cat > .env <<EOT
           ENV=${{ secrets.ENV }}

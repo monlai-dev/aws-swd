@@ -2,25 +2,17 @@ version: '3.8'
 
 services:
   driver:
-    build:
-      context: .
-    command: go run main.go driver --port 8082
+    image: monlaine123/monlai:latest
+    command: ["./main", "driver", "--port", "8082"]
     ports:
       - "8082:8082"
     env_file:
       - .env
-    working_dir: /app
-    volumes:
-      - .:/app
 
   customer:
-    build:
-      context: .
-    command: go run main.go customer --port 8081
+    image: monlaine123/monlai:latest
+    command: ["./main", "customer", "--port", "8081"]
     ports:
       - "8081:8081"
     env_file:
       - .env
-    working_dir: /app
-    volumes:
-      - .:/app

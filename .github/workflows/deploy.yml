@@ -10,54 +10,94 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: 📥 Checkout Code
         uses: actions/checkout@v3
 
-      - name: Docker Login
+      - name: 🔐 Docker Login
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build Docker Image
+      - name: 🐳 Build Docker Image
         run: docker build -t monlaine123/monlai:latest .
 
-      - name: Push to Docker Hub
+      - name: 📤 Push to Docker Hub
         run: docker push monlaine123/monlai:latest
 
-      - name: Setup SSH
+      - name: 🔐 Set up SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-      - name: Create .env and Deploy on EC2
+      - name: 🚀 Deploy to EC2
         shell: bash
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} <<EOF
-          set -e
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} << 'EOF'
+  set -e
+  
+  echo "📁 Ensuring project directory"
+  mkdir -p ${{ secrets.EC2_PROJECT_DIR }}
+  cd ${{ secrets.EC2_PROJECT_DIR }} || { echo "❌ Failed to cd into project dir"; exit 1; }
+  
+  echo "🐳 Ensuring Docker is running"
+  sudo systemctl start docker || exit 1
+  sudo systemctl enable docker || exit 1
+  sudo usermod -aG docker ec2-user
+  
+  echo "🔧 Installing docker-compose (if missing)"
+  if ! command -v docker-compose &> /dev/null; then
+  sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  sudo chmod +x /usr/local/bin/docker-compose
+  fi
+  
+  echo "🔐 Logging in to Docker Hub"
+  echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin || exit 1
+  
+  echo "📝 Writing .env file"
+  cat > .env <<EOT
+  ENV=${{ secrets.ENV }}
+  REDIS_URL=${{ secrets.REDIS_URL }}
+  RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
+  SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
+  AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION=${{ secrets.AWS_REGION }}
+  EOT
+  
+  echo "📝 Writing docker-compose.yml"
+  cat > docker-compose.yml <<EOT
+version: '3.8'
+services:
+  driver:
+    image: monlaine123/monlai:latest
+    command: ["./main", "driver", "--port", "8082"]
+    ports:
+      - "8082:8082"
+    env_file:
+      - .env
 
-          echo "Changing to project directory"
-          cd ${{ secrets.EC2_PROJECT_DIR }}
-          
-          echo "Logging in to Docker Hub"
-          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
-          
-          echo "Creating .env file"
-          cat > .env <<EOT
-          ENV=${{ secrets.ENV }}
-          REDIS_URL=${{ secrets.REDIS_URL }}
-          RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
-          SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
-          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION=${{ secrets.AWS_REGION }}
-          EOT
-          
-          echo "Pulling latest code"
-          git fetch origin
-          git reset --hard origin/main
-          
-          echo "Restarting app"
-          docker-compose down
-          docker-compose pull
-          docker-compose up --build -d
-          
-          echo "Deployment complete"
-          EOF
+  customer:
+    image: monlaine123/monlai:latest
+    command: ["./main", "customer", "--port", "8081"]
+    ports:
+      - "8081:8081"
+    env_file:
+      - .env
+  EOT
+  
+  echo "✅ Validating .env and docker-compose.yml"
+  ls -l .env || exit 1
+  docker-compose config || exit 1
+  
+  echo "⬇️ Pulling latest code"
+  if [ ! -d .git ]; then
+  git clone ${{ secrets.REPO_URL }} . || exit 1
+  fi
+  git fetch origin || exit 1
+  git reset --hard origin/main || exit 1
+  
+  echo "♻️ Restarting services"
+  docker-compose down || exit 1
+  docker-compose pull || exit 1
+  docker-compose up -d || exit 1
+  
+  echo "✅ Deployment complete"
+  EOF

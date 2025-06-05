@@ -1,118 +1,113 @@
-name: Deploy to EC2 with Dynamic .env
+name: CI/CD: Build and Deploy to EC2
 
 on:
   push:
     branches:
       - main
 
+env:
+  IMAGE_NAME: monlaine123/monlai:latest
+
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: 🧾 Checkout repository
         uses: actions/checkout@v3
 
-      - name: Docker Login
+      - name: 🐳 Login to Docker Hub
         run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-      - name: Build Docker Image
-        run: docker build -t monlaine123/monlai:latest .
+      - name: 🏗️ Build Docker image
+        run: docker build -t $IMAGE_NAME .
 
-      - name: Push to Docker Hub
-        run: docker push monlaine123/monlai:latest
+      - name: 🚀 Push Docker image to Docker Hub
+        run: docker push $IMAGE_NAME
 
-      - name: Setup SSH
+      - name: 🔐 Set up SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-      - name: Deploy and Configure on EC2
+      - name: 🛰️ Deploy to EC2 via SSH
         shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_PROJECT_DIR: ${{ secrets.EC2_PROJECT_DIR }}
+          REPO_URL: ${{ secrets.REPO_URL }}
+          ENV: ${{ secrets.ENV }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          RDS_CONNECTION: ${{ secrets.RDS_CONNECTION }}
+          SQS_QUEUE_URL: ${{ secrets.SQS_QUEUE_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} << 'EOF'
+          ssh -o StrictHostKeyChecking=no $EC2_HOST <<'EOF'
           set -e
 
-          echo "==> Ensuring project directory exists"
-          mkdir -p ${{ secrets.EC2_PROJECT_DIR }}
-          cd ${{ secrets.EC2_PROJECT_DIR }}
+          echo "🔧 Create project dir"
+          mkdir -p $EC2_PROJECT_DIR && cd $EC2_PROJECT_DIR
 
-          echo "==> Starting Docker"
-          sudo systemctl start docker || echo "Docker might already be running"
+          echo "🐳 Ensure Docker is ready"
+          sudo systemctl start docker || true
           sudo systemctl enable docker
+          sudo usermod -aG docker ec2-user || true
 
-          echo "==> Adding ec2-user to docker group"
-          sudo usermod -aG docker ec2-user || echo "Already in group"
-
-          echo "==> Installing docker-compose if missing"
+          echo "📦 Install docker-compose if missing"
           if ! command -v docker-compose &> /dev/null; then
             sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
             sudo chmod +x /usr/local/bin/docker-compose
           fi
 
-          docker-compose --version || { echo "docker-compose installation failed"; exit 1; }
-
-          echo "==> Logging in to Docker Hub"
+          echo "🔐 Docker login"
           echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-          echo "==> Creating .env file"
+          echo "🧾 Write .env file"
           cat > .env <<EOT
-  ENV=${{ secrets.ENV }}
-  REDIS_URL=${{ secrets.REDIS_URL }}
-  RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
-  SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
-  AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_REGION=${{ secrets.AWS_REGION }}
+  ENV=$ENV
+  REDIS_URL=$REDIS_URL
+  RDS_CONNECTION=$RDS_CONNECTION
+  SQS_QUEUE_URL=$SQS_QUEUE_URL
+  AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+  AWS_REGION=$AWS_REGION
   EOT
   
-  echo "==> Validating .env file"
-  ls -la .env
-  cat .env
-  
-  echo "==> Creating docker-compose.yml"
+  echo "🐳 Write docker-compose.yml"
   cat > docker-compose.yml <<EOT
 version: '3.8'
 services:
-  driver:
-    image: monlaine123/monlai:latest
-    command: ["./main", "driver", "--port", "8082"]
-    ports:
-      - "8082:8082"
-    env_file:
-      - .env
-
   customer:
-    image: monlaine123/monlai:latest
+    image: $IMAGE_NAME
     command: ["./main", "customer", "--port", "8081"]
     ports:
       - "8081:8081"
     env_file:
       - .env
+
+  driver:
+    image: $IMAGE_NAME
+    command: ["./main", "driver", "--port", "8082"]
+    ports:
+      - "8082:8082"
+    env_file:
+      - .env
   EOT
   
-  echo "==> Validating docker-compose.yml"
-  docker-compose config || { echo "Invalid docker-compose.yml"; exit 1; }
-  
-  echo "==> Cloning or updating repository"
+  echo "🚢 Pull latest code"
   if [ ! -d .git ]; then
-  git clone ${{ secrets.REPO_URL }} . || { echo "Git clone failed"; exit 1; }
+  git clone $REPO_URL . || exit 1
   fi
   git fetch origin
   git reset --hard origin/main
   
-  echo "==> Stopping old containers"
-  docker-compose down || echo "No containers to stop"
-  
-  echo "==> Pulling new images and starting containers"
+  echo "🔄 Restarting services"
+  docker-compose down || true
   docker-compose pull
-  docker-compose up --build -d
+  docker-compose up -d
   
-  echo "==> Showing running containers"
+  echo "✅ Running containers:"
   docker ps
-  
-  echo "==> Showing container logs"
-  docker-compose logs --tail=50
-  
-  echo "==> Deployment complete"
   EOF

@@ -18,32 +18,34 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
 
-      - name: 📝 Create .env and Deploy on EC2
+      - name: Create .env and Deploy on EC2
+        shell: bash
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} << 'EOF'
-            set -e
-            echo "Navigating to project directory"
-            cd ${{ secrets.EC2_PROJECT_DIR }}
+          ssh -o StrictHostKeyChecking=no ${{ secrets.EC2_HOST }} <<EOF
+          set -e
 
-            echo "📝 Writing .env file"
-            cat <<EOT > .env
-  ENV=${{ secrets.ENV }}
-  REDIS_URL=${{ secrets.REDIS_URL }}
-  RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
-  SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
-  AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_REGION=${{ secrets.AWS_REGION }}
-  EOT
+          echo "📁 Changing to project directory"
+          cd ${{ secrets.EC2_PROJECT_DIR }}
+
+          echo "📝 Creating .env file"
+          cat > .env <<EOT
+          ENV=${{ secrets.ENV }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          RDS_CONNECTION=${{ secrets.RDS_CONNECTION }}
+          SQS_QUEUE_URL=${{ secrets.SQS_QUEUE_URL }}
+          AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION=${{ secrets.AWS_REGION }}
+          EOT
   
-  echo "Pulling latest code"
-  git fetch origin
-  git reset --hard origin/main
-  
-  echo "Rebuilding and starting containers"
-  docker-compose down
-  docker-compose pull
-  docker-compose up --build -d
-  
-  echo "Deployment complete"
-  EOF
+          echo "🔄 Pulling latest code"
+          git fetch origin
+          git reset --hard origin/main
+          
+          echo "🐳 Restarting app"
+          docker-compose down
+          docker-compose pull
+          docker-compose up --build -d
+          
+          echo "✅ Deployment complete"
+          EOF

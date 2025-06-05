@@ -3,7 +3,7 @@ version: '3.8'
 services:
   driver:
     build:
-      context: ./driver
+      context: .
     command: go run main.go driver --port 8082
     ports:
       - "8082:8082"
@@ -11,11 +11,11 @@ services:
       - .env
     working_dir: /app
     volumes:
-      - ./driver:/app
+      - .:/app
 
   customer:
     build:
-      context: ./customer
+      context: .
     command: go run main.go customer --port 8081
     ports:
       - "8081:8081"
@@ -23,4 +23,4 @@ services:
       - .env
     working_dir: /app
     volumes:
-      - ./customer:/app
+      - .:/app

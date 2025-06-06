@@ -82,5 +82,6 @@ jobs:
           EOT
           
           echo "🚀 Starting services using Docker Compose"
+          docker-compose pull
           docker-compose up -d --remove-orphans --build
 

@@ -49,7 +49,8 @@ jobs:
           ssh -o StrictHostKeyChecking=no "$EC2_HOST" <<EOF
           set -e
 
-          cd "$EC2_PROJECT_DIR"
+          echo "🧹 Cleaning existing project directory if present"
+          rm -rf "$EC2_PROJECT_DIR"
           
           echo "📥 Cloning repo"
           git clone "$REPO_URL" "$EC2_PROJECT_DIR"

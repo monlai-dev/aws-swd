@@ -49,8 +49,8 @@ jobs:
           ssh -o StrictHostKeyChecking=no "$EC2_HOST" <<EOF
           set -e
 
-          echo "🔧 Creating project directory"
-          mkdir -p "$EC2_PROJECT_DIR"
+#          echo "🔧 Creating project directory"
+#          mkdir -p "$EC2_PROJECT_DIR"
           cd "$EC2_PROJECT_DIR"
           
           echo "📥 Cloning repo"

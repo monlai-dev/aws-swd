@@ -78,6 +78,6 @@ jobs:
           AWS_REGION=$AWS_REGION
           EOT
           
-          echo "📄 Writing docker-compose.yml"
-          cat > docker-compose.yml <<EOT
+          echo "🚀 Starting services using Docker Compose"
+          docker-compose up -d --remove-orphans --build
 

@@ -8,7 +8,7 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "myapp",
+	Use:   "main",
 	Short: "Microservices application",
 }
 

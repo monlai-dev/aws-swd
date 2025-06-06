@@ -52,7 +52,11 @@ jobs:
           echo "🔧 Creating project directory"
           mkdir -p "$EC2_PROJECT_DIR"
           cd "$EC2_PROJECT_DIR"
-
+          
+          echo "📥 Cloning repo"
+          git clone "$REPO_URL" "$EC2_PROJECT_DIR"
+          cd "$EC2_PROJECT_DIR"
+          
           echo "🐳 Ensuring Docker is running"
           sudo systemctl start docker || true
           sudo systemctl enable docker

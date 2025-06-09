@@ -7,4 +7,5 @@ func RegisterCustomerRoutes(engine *gin.Engine, controller *AccountController) {
 	group.POST("/login", controller.LoginHandler)
 	group.POST("/register", controller.RegisterHandler)
 	group.GET("/get-user-info/:customerid", controller.GetAccountHandler)
+	group.POST("/request-ride", controller.RequestRide)
 }

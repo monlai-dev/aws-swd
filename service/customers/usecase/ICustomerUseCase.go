@@ -4,6 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
+
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"log"
@@ -12,6 +17,7 @@ import (
 	"microservice_swd_demo/service/customers/model/request"
 	"microservice_swd_demo/service/customers/model/response"
 	"microservice_swd_demo/service/customers/repository"
+	"os"
 	"strconv"
 	"time"
 )
@@ -20,11 +26,18 @@ type ICustomerUseCase interface {
 	CreateAccount(dto request.CreateAccountDTO) (string, error)
 	Login(dto request.Login) (response.LoginResponseDTO, error)
 	GetAccountByID(id int) (response.AccountResponseDTO, error)
+	RequestRide(request request.RideRequestDTO) error
 }
 
 const (
 	CacheKeyPrefix = "customerservice:"
 )
+
+type RideRequest struct {
+	RequestId  string `json:"request_id"`
+	CustomerId int    `json:"customer_id"`
+	RegionId   string `json:"region_id"`
+}
 
 type customerUseCase struct {
 	customerRepo repository.ICustomerRepository
@@ -137,4 +150,43 @@ func (c customerUseCase) GetAccountByID(id int) (response.AccountResponseDTO, er
 	}()
 
 	return responseAccount, nil
+}
+
+func (c customerUseCase) RequestRide(request request.RideRequestDTO) error {
+	ctx := context.Background()
+
+	// Load AWS config
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		log.Fatalf("load config error: %v", err)
+	}
+
+	client := sqs.NewFromConfig(cfg)
+	queueURL := os.Getenv("SQS_QUEUE_URL")
+
+	randomRequestID := uuid.New().String()
+
+	rideRequest := RideRequest{
+		RequestId:  randomRequestID,
+		CustomerId: request.UserId,
+		RegionId:   request.RegionId,
+	}
+
+	data, err := json.Marshal(rideRequest)
+	if err != nil {
+		log.Printf("Failed to marshal ride request: %s", err.Error())
+		return errors.New("failed to create ride request")
+	}
+
+	_, err = client.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:    &queueURL,
+		MessageBody: aws.String(string(data)),
+	})
+	if err != nil {
+		log.Printf("Failed to send message: %v", err)
+		return errors.New("failed to enqueue ride request")
+	}
+
+	log.Printf("Ride request sent with ID: %s", randomRequestID)
+	return nil
 }

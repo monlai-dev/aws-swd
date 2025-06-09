@@ -15,6 +15,7 @@ import (
 	"microservice_swd_demo/service/drivers/model/request"
 	"microservice_swd_demo/service/drivers/model/response"
 	"microservice_swd_demo/service/drivers/repository"
+	"microservice_swd_demo/service/notify/model"
 	"net/http"
 	"os"
 	"strconv"
@@ -45,6 +46,19 @@ type AccountResponseDTO struct {
 const (
 	CacheKeyPrefix = "driverservice:"
 )
+
+var (
+	queueClient *sqs.Client
+)
+
+func init() {
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		log.Fatalf("load config error: %v", err)
+	}
+	queueClient = sqs.NewFromConfig(cfg)
+}
 
 func NewDriverUseCase(driverRepo repository.IDriverRepository, redis *redis.Client) IDriverUseCase {
 	return &driverUseCase{
@@ -211,8 +225,34 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 		select {
 		case msg := <-ch:
 			if msg.Payload == driverID {
-				log.Printf("Driver %s accepted ride %s", driverID, ride.RequestId)
-				// Proceed to booking confirmation or notification step
+				driverid, _ := strconv.Atoi(driverID)
+				driverInfo, err := d.driverRepo.GetByID(driverid)
+				if err != nil {
+					log.Printf("Failed to fetch driver info: %v", err)
+					return
+				}
+
+				notifyPayload := model.NotifyUserDTO{
+					RequestId: ride.RequestId,
+					UserId:    ride.CustomerId,
+					Driver: model.DriverResponseDTO{
+						FullName: driverInfo.Name,
+						Email:    driverInfo.Email,
+						Phone:    driverInfo.Phone,
+						RegionID: driverInfo.RegionID,
+						Car:      driverInfo.Car,
+					},
+				}
+
+				payloadBytes, _ := json.Marshal(notifyPayload)
+
+				_, err = queueClient.SendMessage(ctx, &sqs.SendMessageInput{
+					QueueUrl:    aws.String(os.Getenv("USER_QUEUE_URL")),
+					MessageBody: aws.String(string(payloadBytes)),
+				})
+				if err != nil {
+					log.Printf("Failed to publish NotifyUser message: %v", err)
+				}
 				return
 			}
 		case <-timer.C:

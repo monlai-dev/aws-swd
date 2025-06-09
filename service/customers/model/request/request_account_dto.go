@@ -16,3 +16,8 @@ type Login struct {
 type GetAccountInfoWithId struct {
 	CustomerId int `json:"cusomer_id" validate:"required"`
 }
+
+type RideRequestDTO struct {
+	UserId   int    `json:"user_id" validate:"required"` // ID of the user making the request
+	RegionId string `json:"region" validate:"required"`  // Region where the ride is requested
+}

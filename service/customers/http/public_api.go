@@ -77,3 +77,20 @@ func (ac *AccountController) GetAccountHandler(c *gin.Context) {
 	// 3. Respond with the account info
 	c.JSON(http.StatusOK, gin.H{"account": account})
 }
+
+func (ac *AccountController) RequestRide(c *gin.Context) {
+	var rideRequest request.RideRequestDTO
+	if err := c.ShouldBindJSON(&rideRequest); err != nil {
+		log.Printf("Error binding JSON: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+
+	if err := ac.accountUsecase.RequestRide(rideRequest); err != nil {
+		log.Printf("Ride request failed: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to request ride"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Ride requested successfully, please wait for a driver to accept your request"})
+}

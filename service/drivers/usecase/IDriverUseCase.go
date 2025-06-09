@@ -15,7 +15,7 @@ import (
 	"microservice_swd_demo/service/drivers/model/request"
 	"microservice_swd_demo/service/drivers/model/response"
 	"microservice_swd_demo/service/drivers/repository"
-	"microservice_swd_demo/service/notify/model"
+	"microservice_swd_demo/service/notify/model/dto"
 	"net/http"
 	"os"
 	"strconv"
@@ -27,6 +27,20 @@ type IDriverUseCase interface {
 	RequestOnline(request request.OnlineRequestDTO) error
 	AcceptOrder(request request.AcceptOrderDTO) error
 	MatchingOrder() error
+}
+
+type NotifyUserDTO struct {
+	RequestId string            `json:"request_id"`
+	UserId    int               `json:"user_id"`
+	Driver    DriverResponseDTO `json:"driver"`
+}
+
+type DriverResponseDTO struct {
+	FullName string `json:"full_name"`
+	Phone    string `json:"phone"`
+	Email    string `json:"email"`
+	RegionID int    `json:"region_id"`
+	Car      string `json:"car"`
 }
 
 type RideRequest struct {
@@ -176,7 +190,8 @@ func (d *driverUseCase) AcceptOrder(request request.AcceptOrderDTO) error {
 }
 
 func (d *driverUseCase) processRide(ride RideRequest) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	regionID := ride.RegionId
 	redisKey := CacheKeyPrefix + "online_drivers:" + regionID
@@ -209,62 +224,99 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 	}
 
 	for i, driverID := range drivers {
-		log.Printf("Notifying driver %s (attempt %d)", driverID, i+1)
-
-		d.notifyDriver(driverID, ride, account)
-
-		// 2. Subscribe to acceptance pub/sub topic
-		topic := CacheKeyPrefix + "accept_order:" + ride.RequestId
-		sub := d.redis.Subscribe(ctx, topic)
-		defer sub.Close()
-
-		ch := sub.Channel()
-		timer := time.NewTimer(8 * time.Second)
-		defer timer.Stop()
-
 		select {
-		case msg := <-ch:
-			if msg.Payload == driverID {
-				driverid, _ := strconv.Atoi(driverID)
-				driverInfo, err := d.driverRepo.GetByID(driverid)
-				if err != nil {
-					log.Printf("Failed to fetch driver info: %v", err)
+		case <-ctx.Done():
+			log.Printf("Global timeout reached for ride %s", ride.RequestId)
+			return
+		default:
+			log.Printf("Notifying driver %s (attempt %d)", driverID, i+1)
+
+			d.notifyDriver(driverID, ride, account)
+
+			topic := CacheKeyPrefix + "accept_order:" + ride.RequestId
+			sub := d.redis.Subscribe(ctx, topic)
+			defer sub.Close()
+
+			ch := sub.Channel()
+			timer := time.NewTimer(8 * time.Second)
+			defer timer.Stop()
+
+			select {
+			case msg := <-ch:
+				if msg.Payload == driverID {
+					driverid, _ := strconv.Atoi(driverID)
+					driverInfo, err := d.driverRepo.GetByID(driverid)
+					if err != nil {
+						log.Printf("Failed to fetch driver info: %v", err)
+						return
+					}
+
+					notifyPayload := NotifyUserDTO{
+						RequestId: ride.RequestId,
+						UserId:    ride.CustomerId,
+						Driver: DriverResponseDTO{
+							FullName: driverInfo.Name,
+							Email:    driverInfo.Email,
+							Phone:    driverInfo.Phone,
+							RegionID: driverInfo.RegionID,
+							Car:      driverInfo.Car,
+						},
+					}
+
+					payloadBytes, _ := json.Marshal(notifyPayload)
+
+					_, err = queueClient.SendMessage(ctx, &sqs.SendMessageInput{
+						QueueUrl:    aws.String(os.Getenv("USER_QUEUE_URL")),
+						MessageBody: aws.String(string(payloadBytes)),
+					})
+					if err != nil {
+						log.Printf("Failed to publish NotifyUser message: %v", err)
+					}
 					return
 				}
-
-				notifyPayload := model.NotifyUserDTO{
-					RequestId: ride.RequestId,
-					UserId:    ride.CustomerId,
-					Driver: model.DriverResponseDTO{
-						FullName: driverInfo.Name,
-						Email:    driverInfo.Email,
-						Phone:    driverInfo.Phone,
-						RegionID: driverInfo.RegionID,
-						Car:      driverInfo.Car,
-					},
-				}
-
-				payloadBytes, _ := json.Marshal(notifyPayload)
-
-				_, err = queueClient.SendMessage(ctx, &sqs.SendMessageInput{
-					QueueUrl:    aws.String(os.Getenv("USER_QUEUE_URL")),
-					MessageBody: aws.String(string(payloadBytes)),
-				})
-				if err != nil {
-					log.Printf("Failed to publish NotifyUser message: %v", err)
-				}
+			case <-timer.C:
+				log.Printf("Driver %s did not respond, trying next", driverID)
+			case <-ctx.Done():
+				log.Printf("Global timeout reached during driver wait for ride %s", ride.RequestId)
 				return
 			}
-		case <-timer.C:
-			log.Printf("Driver %s did not respond, trying next", driverID)
 		}
 	}
 
-	log.Printf("No driver accepted ride %s after checking all", ride.RequestId)
+	log.Printf("No driver accepted ride %s after checking all or timeout", ride.RequestId)
 }
 
 func (d *driverUseCase) notifyDriver(driverId string, request RideRequest, customer AccountResponseDTO) {
+	ctx := context.Background()
 
+	// Create notification payload
+	driverid, _ := strconv.Atoi(driverId)
+
+	notifyPayload := dto.NotifyDriverDTO{
+		DriverId:         driverid,
+		RequestId:        request.RequestId,
+		CustomerFullName: customer.FullName,
+		CustomerPhone:    customer.Phone,
+	}
+
+	// Convert payload to JSON
+	payloadBytes, err := json.Marshal(notifyPayload)
+	if err != nil {
+		log.Printf("Failed to marshal notify payload: %v", err)
+		return
+	}
+
+	// Send message to driver queue
+	_, err = queueClient.SendMessage(ctx, &sqs.SendMessageInput{
+		QueueUrl:    aws.String(os.Getenv("DRIVER_QUEUE_URL")),
+		MessageBody: aws.String(string(payloadBytes)),
+	})
+	if err != nil {
+		log.Printf("Failed to send notification to driver queue: %v", err)
+		return
+	}
+
+	log.Printf("Notification sent to driver %s for request %s", driverId, request.RequestId)
 }
 
 func (d *driverUseCase) fetchUserInfo(url string) (AccountResponseDTO, error) {

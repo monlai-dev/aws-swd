@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"microservice_swd_demo/service/notify/model/dto"
 	"microservice_swd_demo/service/notify/strategy"
 	"os"
 	"strconv"
@@ -15,12 +16,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/redis/go-redis/v9"
-	"microservice_swd_demo/service/notify/model"
 )
 
 var (
 	queueClient *sqs.Client
-	notifyChan  = make(chan model.NotifyDriverDTO, 100)
+	notifyChan  = make(chan dto.NotifyDriverDTO, 100)
 )
 
 func init() {
@@ -34,7 +34,7 @@ func init() {
 
 type INotifyUseCase interface {
 	NotifyDriver() error
-	RegisterFcmToken(dto model.RequestUpdateFcmTokenDTO) error
+	RegisterFcmToken(dto dto.RequestUpdateFcmTokenDTO) error
 	NotifyUser() error
 	GetFcmToken(role string, accountId int) (string, error)
 }
@@ -54,41 +54,45 @@ func NewNotifyUseCase(redis *redis.Client, firebaseClient *firebase.App) INotify
 func (n *notifyUseCase) NotifyDriver() error {
 	queueUrl := os.Getenv("DRIVER_QUEUE_URL")
 
-	for {
-		output, err := queueClient.ReceiveMessage(context.Background(), &sqs.ReceiveMessageInput{
-			QueueUrl:            &queueUrl,
-			MaxNumberOfMessages: 5,
-			WaitTimeSeconds:     2,
-		})
-		if err != nil {
-			log.Printf("Failed to receive message: %v", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		for _, msg := range output.Messages {
-			var dto model.NotifyDriverDTO
-			err := json.Unmarshal([]byte(*msg.Body), &dto)
+	go func() { // Start processing in a goroutine
+		for {
+			output, err := queueClient.ReceiveMessage(context.Background(), &sqs.ReceiveMessageInput{
+				QueueUrl:            &queueUrl,
+				MaxNumberOfMessages: 5,
+				WaitTimeSeconds:     2,
+			})
 			if err != nil {
-				log.Printf("Failed to parse message body: %v", err)
+				log.Printf("Failed to receive message: %v", err)
+				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			notifyChan <- dto // Push to worker channel
+			for _, msg := range output.Messages {
+				var driverDTO dto.NotifyDriverDTO
+				err := json.Unmarshal([]byte(*msg.Body), &driverDTO)
+				if err != nil {
+					log.Printf("Failed to parse message body: %v", err)
+					continue
+				}
 
-			// Delete message after enqueue
-			_, err = queueClient.DeleteMessage(context.Background(), &sqs.DeleteMessageInput{
-				QueueUrl:      &queueUrl,
-				ReceiptHandle: msg.ReceiptHandle,
-			})
-			if err != nil {
-				log.Printf("Failed to delete message: %v", err)
+				notifyChan <- driverDTO // Push to worker channel
+
+				// Delete message after enqueue
+				_, err = queueClient.DeleteMessage(context.Background(), &sqs.DeleteMessageInput{
+					QueueUrl:      &queueUrl,
+					ReceiptHandle: msg.ReceiptHandle,
+				})
+				if err != nil {
+					log.Printf("Failed to delete message: %v", err)
+				}
 			}
 		}
-	}
+	}()
+
+	return nil
 }
 
-func (n *notifyUseCase) RegisterFcmToken(dto model.RequestUpdateFcmTokenDTO) error {
+func (n *notifyUseCase) RegisterFcmToken(dto dto.RequestUpdateFcmTokenDTO) error {
 	ctx := context.Background()
 	strat, err := strategy.GetTokenStrategy(dto.Role)
 	if err != nil {
@@ -105,37 +109,42 @@ func (n *notifyUseCase) RegisterFcmToken(dto model.RequestUpdateFcmTokenDTO) err
 
 func (n *notifyUseCase) NotifyUser() error {
 	queueUrl := os.Getenv("USER_QUEUE_URL")
-	for {
-		output, err := queueClient.ReceiveMessage(context.Background(), &sqs.ReceiveMessageInput{
-			QueueUrl:            &queueUrl,
-			MaxNumberOfMessages: 5,
-			WaitTimeSeconds:     2,
-		})
-		if err != nil {
-			log.Printf("Failed to receive user noti msg: %v", err)
-			time.Sleep(5 * time.Second)
-			continue
-		}
 
-		for _, msg := range output.Messages {
-			var dto model.NotifyUserDTO
-			err := json.Unmarshal([]byte(*msg.Body), &dto)
+	go func() { // Start processing in a goroutine
+		for {
+			output, err := queueClient.ReceiveMessage(context.Background(), &sqs.ReceiveMessageInput{
+				QueueUrl:            &queueUrl,
+				MaxNumberOfMessages: 5,
+				WaitTimeSeconds:     2,
+			})
 			if err != nil {
-				log.Printf("Invalid NotifyUser message: %v", err)
+				log.Printf("Failed to receive user noti msg: %v", err)
+				time.Sleep(5 * time.Second)
 				continue
 			}
 
-			go n.notifyUserByFCM(dto)
+			for _, msg := range output.Messages {
+				var driverDTO dto.NotifyUserDTO
+				err := json.Unmarshal([]byte(*msg.Body), &driverDTO)
+				if err != nil {
+					log.Printf("Invalid NotifyUser message: %v", err)
+					continue
+				}
 
-			_, err = queueClient.DeleteMessage(context.Background(), &sqs.DeleteMessageInput{
-				QueueUrl:      &queueUrl,
-				ReceiptHandle: msg.ReceiptHandle,
-			})
-			if err != nil {
-				log.Printf("Failed to delete NotifyUser message: %v", err)
+				go n.notifyUserByFCM(driverDTO)
+
+				_, err = queueClient.DeleteMessage(context.Background(), &sqs.DeleteMessageInput{
+					QueueUrl:      &queueUrl,
+					ReceiptHandle: msg.ReceiptHandle,
+				})
+				if err != nil {
+					log.Printf("Failed to delete NotifyUser message: %v", err)
+				}
 			}
 		}
-	}
+	}()
+
+	return nil
 }
 
 func (n *notifyUseCase) GetFcmToken(role string, accountId int) (string, error) {
@@ -172,7 +181,7 @@ func (n *notifyUseCase) startNotifyDriverWorker(poolSize int) {
 	}
 }
 
-func (n *notifyUseCase) handleDriverNotification(msg model.NotifyDriverDTO) {
+func (n *notifyUseCase) handleDriverNotification(msg dto.NotifyDriverDTO) {
 	ctx := context.Background()
 
 	usecase := NewNotifyUseCase(n.redis, n.firebaseClient)
@@ -207,11 +216,11 @@ func (n *notifyUseCase) handleDriverNotification(msg model.NotifyDriverDTO) {
 	}
 }
 
-func (n *notifyUseCase) notifyUserByFCM(dto model.NotifyUserDTO) {
+func (n *notifyUseCase) notifyUserByFCM(notiyfUserDto dto.NotifyUserDTO) {
 	ctx := context.Background()
-	token, err := n.GetFcmToken("customer", dto.UserId)
+	token, err := n.GetFcmToken("customer", notiyfUserDto.UserId)
 	if err != nil {
-		log.Printf("Could not get FCM token for user %d: %v", dto.UserId, err)
+		log.Printf("Could not get FCM token for user %d: %v", notiyfUserDto.UserId, err)
 		return
 	}
 
@@ -224,18 +233,18 @@ func (n *notifyUseCase) notifyUserByFCM(dto model.NotifyUserDTO) {
 	message := &messaging.Message{
 		Token: token,
 		Data: map[string]string{
-			"request_id": dto.RequestId,
-			"full_name":  dto.Driver.FullName,
-			"email":      dto.Driver.Email,
-			"phone":      dto.Driver.Phone,
-			"region_id":  strconv.Itoa(dto.Driver.RegionID),
-			"car":        dto.Driver.Car,
+			"request_id": notiyfUserDto.RequestId,
+			"full_name":  notiyfUserDto.Driver.FullName,
+			"email":      notiyfUserDto.Driver.Email,
+			"phone":      notiyfUserDto.Driver.Phone,
+			"region_id":  strconv.Itoa(notiyfUserDto.Driver.RegionID),
+			"car":        notiyfUserDto.Driver.Car,
 		},
 	}
 
 	if _, err := client.Send(ctx, message); err != nil {
-		log.Printf("FCM send to user %d failed: %v", dto.UserId, err)
+		log.Printf("FCM send to user %d failed: %v", notiyfUserDto.UserId, err)
 	} else {
-		log.Printf("Push sent to user %d for ride %s", dto.UserId, dto.RequestId)
+		log.Printf("Push sent to user %d for ride %s", notiyfUserDto.UserId, notiyfUserDto.RequestId)
 	}
 }

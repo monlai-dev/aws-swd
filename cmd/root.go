@@ -22,6 +22,7 @@ func Execute() {
 func init() {
 	rootCmd.AddCommand(customerCmd)
 	rootCmd.AddCommand(driverCmd)
+	rootCmd.AddCommand(notifyCmd)
 	//rootCmd.AddCommand(bookingCmd)
 	// Add other service commands
 }

@@ -107,7 +107,7 @@ func (c customerUseCase) GetAccountByID(id int) (response.AccountResponseDTO, er
 
 	if value.Err() == nil {
 		var cachedAccount response.AccountResponseDTO
-		if err := value.Scan(&cachedAccount); err != nil {
+		if err := json.Unmarshal([]byte(value.Val()), &cachedAccount); err != nil {
 			log.Printf("Error scanning cached account: %s", err.Error())
 			return response.AccountResponseDTO{}, errors.New("error retrieving cached account")
 		}

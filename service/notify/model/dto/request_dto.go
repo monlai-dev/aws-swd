@@ -1,4 +1,4 @@
-package model
+package dto
 
 type RequestUpdateFcmTokenDTO struct {
 	FcmToken string `json:"fcm_token" validate:"required"` // FCM token to update

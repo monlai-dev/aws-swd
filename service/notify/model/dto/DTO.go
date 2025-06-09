@@ -1,4 +1,4 @@
-package model
+package dto
 
 type NotifyDriverDTO struct {
 	DriverId         int    `json:"driver_id"`

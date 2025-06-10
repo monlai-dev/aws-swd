@@ -43,8 +43,11 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: ${{ secrets.AWS_REGION }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_FILE }}
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+          USER_QUEUE_URL: ${{ secrets.USER_QUEUE_URL }}
+          DRIVER_QUEUE_URL: ${{ secrets.DRIVER_QUEUE_URL }}
         run: |
           ssh -o StrictHostKeyChecking=no "$EC2_HOST" <<EOF
           set -e
@@ -75,12 +78,31 @@ jobs:
           ENV=$ENV
           REDIS_URL=$REDIS_URL
           RDS_CONNECTION=$RDS_CONNECTION
+          
+          # AWS SQS queues
           SQS_QUEUE_URL=$SQS_QUEUE_URL
+          USER_QUEUE_URL=$USER_QUEUE_URL
+          DRIVER_QUEUE_URL=$DRIVER_QUEUE_URL
+          
+          FIREBASE_CREDENTIALS_FILE=$EC2_PROJECT_DIR/firebase-service-account.json
+          
+          # Internal service communication
+          USER_SERVICE_URL=http://customer:8081
+          
+          # AWS credentials
           AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
           AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
           AWS_REGION=$AWS_REGION
           EOT
           
+          echo "🛠 Installing jq if it's missing"
+          if ! command -v jq &> /dev/null; then
+          sudo yum install -y jq || sudo apt-get install -y jq
+          fi
+          
+          echo "🔐 Writing Firebase service account JSON file"
+          echo "$FIREBASE_SERVICE_ACCOUNT" | jq '.' > "$EC2_PROJECT_DIR/firebase-service-account.json"
+
           echo "🚀 Starting services using Docker Compose"
           docker-compose pull
           docker-compose up -d --remove-orphans --build

@@ -5,20 +5,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a7a1c5e3-1e4d-404e-a33b-aff9c299ad48" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/bundlefx/notifyfx/init.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/cmd/notifyCmd.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/pkg/infra/firebaseClient/firebaseClient.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.github/workflows/deploy.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/deploy.yml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmd/driverCmd.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/driverCmd.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/cmd/root.go" beforeDir="false" afterPath="$PROJECT_DIR$/cmd/root.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.mod" beforeDir="false" afterPath="$PROJECT_DIR$/go.mod" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/go.sum" beforeDir="false" afterPath="$PROJECT_DIR$/go.sum" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/service/customers/usecase/ICustomerUseCase.go" beforeDir="false" afterPath="$PROJECT_DIR$/service/customers/usecase/ICustomerUseCase.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/service/drivers/usecase/IDriverUseCase.go" beforeDir="false" afterPath="$PROJECT_DIR$/service/drivers/usecase/IDriverUseCase.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/service/notify/model/DTO.go" beforeDir="false" afterPath="$PROJECT_DIR$/service/notify/model/dto/DTO.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/service/notify/model/request_dto.go" beforeDir="false" afterPath="$PROJECT_DIR$/service/notify/model/dto/request_dto.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/service/notify/strategy/notify_usecase.go" beforeDir="false" afterPath="$PROJECT_DIR$/service/notify/strategy/notify_usecase.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/service/notify/usecase/INotifyUseCase.go" beforeDir="false" afterPath="$PROJECT_DIR$/service/notify/usecase/INotifyUseCase.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,7 +43,7 @@
     &quot;RunOnceActivity.go.formatter.settings.were.checked&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.go.migrated.go.modules.settings&quot;: &quot;true&quot;,
     &quot;RunOnceActivity.go.modules.go.list.on.any.changes.was.set&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;monlai&quot;,
     &quot;go.import.settings.migrated&quot;: &quot;true&quot;,
     &quot;last_opened_file_path&quot;: &quot;C:/Users/admin/GolandProjects/microservice_swd_demo&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,

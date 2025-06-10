@@ -27,7 +27,7 @@ jobs:
 
   deploy-to-ec2:
     runs-on: ubuntu-latest
-    needs: build-and-push  # Wait until build job is done
+    needs: build-and-deploy  # Wait until build job is done
 
     steps:
       - name: 🔐 Set up SSH agent

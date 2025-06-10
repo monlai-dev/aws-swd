@@ -101,7 +101,7 @@ jobs:
           fi
           
           echo "🔐 Writing Firebase service account JSON file"
-          echo "$FIREBASE_SERVICE_ACCOUNT" | jq '.' > "$EC2_PROJECT_DIR/firebase-service-account.json"
+          printf "%b" "$FIREBASE_SERVICE_ACCOUNT" > "$EC2_PROJECT_DIR/firebase-service-account.json"
 
           echo "🚀 Starting services using Docker Compose"
           docker-compose pull

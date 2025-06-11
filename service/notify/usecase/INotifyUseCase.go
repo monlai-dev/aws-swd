@@ -153,6 +153,7 @@ func (n *notifyUseCase) NotifyUser() error {
 					QueueUrl:      &queueUrl,
 					ReceiptHandle: msg.ReceiptHandle,
 				})
+
 				if err != nil {
 					log.Printf("Failed to delete NotifyUser message: %v", err)
 				} else {

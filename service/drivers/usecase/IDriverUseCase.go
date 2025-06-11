@@ -204,6 +204,10 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 	defer cancel()
 
 	var logBuilder strings.Builder
+	defer func() {
+		log.Print(logBuilder.String())
+	}()
+
 	logBuilder.WriteString(fmt.Sprintf("Processing ride request: %s for customer %d in region %s\n", ride.RequestId, ride.CustomerId, ride.RegionId))
 
 	regionID := ride.RegionId
@@ -214,13 +218,11 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 	drivers, err := d.redis.SMembers(ctx, redisKey).Result()
 	if err != nil {
 		logBuilder.WriteString(fmt.Sprintf("Failed to get drivers for region %s: %v\n", regionID, err))
-		log.Print(logBuilder.String())
 		return
 	}
 
 	if len(drivers) == 0 {
 		logBuilder.WriteString(fmt.Sprintf("No available drivers in region %s for ride %s\n", regionID, ride.RequestId))
-		log.Print(logBuilder.String())
 		return
 	}
 
@@ -236,7 +238,6 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 	account, err := d.fetchUserInfo(url)
 	if err != nil {
 		logBuilder.WriteString(fmt.Sprintf("Error fetching user info for CustomerID %d: %v\n", ride.CustomerId, err))
-		log.Print(logBuilder.String())
 		return
 	}
 
@@ -244,7 +245,6 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 		select {
 		case <-ctx.Done():
 			logBuilder.WriteString(fmt.Sprintf("Global timeout reached for ride %s\n", ride.RequestId))
-			log.Print(logBuilder.String())
 			return
 		default:
 			logBuilder.WriteString(fmt.Sprintf("[Unix Timestamp: %d] Notifying driver %s (attempt %d)\n", time.Now().Unix(), driverID, i+1))
@@ -269,7 +269,6 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 					driverInfo, err := d.driverRepo.GetByID(driverid)
 					if err != nil {
 						logBuilder.WriteString(fmt.Sprintf("Failed to fetch driver info: %v\n", err))
-						log.Print(logBuilder.String())
 						return
 					}
 
@@ -295,21 +294,18 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 					if err != nil {
 						logBuilder.WriteString(fmt.Sprintf("Failed to publish NotifyUser message: %v\n", err))
 					}
-					log.Print(logBuilder.String())
 					return
 				}
 			case <-timer.C:
 				logBuilder.WriteString(fmt.Sprintf("Driver %s did not respond, trying next\n", driverID))
 			case <-ctx.Done():
 				logBuilder.WriteString(fmt.Sprintf("Global timeout reached during driver wait for ride %s\n", ride.RequestId))
-				log.Print(logBuilder.String())
 				return
 			}
 		}
 	}
 
 	logBuilder.WriteString(fmt.Sprintf("No driver accepted ride %s after checking all or timeout\n", ride.RequestId))
-	log.Print(logBuilder.String())
 }
 
 func (d *driverUseCase) notifyDriver(driverId string, request RideRequest, customer AccountResponseDTO) {

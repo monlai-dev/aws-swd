@@ -88,7 +88,6 @@ type driverUseCase struct {
 }
 
 func (d *driverUseCase) MatchingOrder() error {
-
 	ctx := context.Background()
 
 	// Load AWS config
@@ -122,21 +121,24 @@ func (d *driverUseCase) MatchingOrder() error {
 						return
 					}
 
-					log.Printf("processing ride request: %s for customer %d in region %s", ride.RequestId, ride.CustomerId, ride.RegionId)
+					log.Printf("Processing ride request: %s for customer %d in region %s", ride.RequestId, ride.CustomerId, ride.RegionId)
+
+					// Always delete the message after processing (even on failure)
+					defer func() {
+						_, err := client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+							QueueUrl:      aws.String(queueURL),
+							ReceiptHandle: msg.ReceiptHandle,
+						})
+						if err != nil {
+							log.Printf("Delete failed: %v", err)
+						} else {
+							log.Printf("Message deleted: %s", ride.RequestId)
+						}
+					}()
 
 					// 🚀 Process the ride request
 					d.processRide(ride)
 
-					// ✅ Delete message after successful processing
-					_, err := client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-						QueueUrl:      aws.String(queueURL),
-						ReceiptHandle: msg.ReceiptHandle,
-					})
-					if err != nil {
-						log.Printf("Delete failed: %v", err)
-					} else {
-						log.Printf("Message deleted: %s", ride.RequestId)
-					}
 				}(msg)
 			}
 		}

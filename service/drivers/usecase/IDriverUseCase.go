@@ -63,6 +63,7 @@ const (
 
 var (
 	queueClient *sqs.Client
+	rideChan    = make(chan types.Message, 100)
 )
 
 func init() {
@@ -87,10 +88,7 @@ type driverUseCase struct {
 }
 
 func (d *driverUseCase) MatchingOrder() error {
-
 	ctx := context.Background()
-
-	// Load AWS config
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatalf("load config error: %v", err)
@@ -99,6 +97,7 @@ func (d *driverUseCase) MatchingOrder() error {
 	client := sqs.NewFromConfig(cfg)
 	queueURL := os.Getenv("SQS_QUEUE_URL")
 
+	// Message polling goroutine
 	go func() {
 		for {
 			output, err := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
@@ -114,32 +113,43 @@ func (d *driverUseCase) MatchingOrder() error {
 			}
 
 			for _, msg := range output.Messages {
-				go func(msg types.Message) {
-					var ride RideRequest
-					if err := json.Unmarshal([]byte(*msg.Body), &ride); err != nil {
-						log.Printf("Invalid message: %v", err)
-						return
-					}
+				rideChan <- msg
+			}
 
-					// 🚀 Process the ride request
-					d.processRide(ride)
-
-					// ✅ Delete message after successful processing
-					_, err := client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-						QueueUrl:      aws.String(queueURL),
-						ReceiptHandle: msg.ReceiptHandle,
-					})
-					if err != nil {
-						log.Printf("Delete failed: %v", err)
-					} else {
-						log.Printf("Message deleted: %s", ride.RequestId)
-					}
-				}(msg)
+			// Delete messages after processing
+			if len(output.Messages) > 0 {
+				_, err := client.DeleteMessageBatch(ctx, &sqs.DeleteMessageBatchInput{
+					QueueUrl: aws.String(queueURL),
+					Entries:  make([]types.DeleteMessageBatchRequestEntry, len(output.Messages)),
+				})
+				if err != nil {
+					log.Printf("Failed to delete messages: %v", err)
+				} else {
+					log.Printf("Processed and deleted %d messages", len(output.Messages))
+				}
 			}
 		}
 	}()
 
+	// Start N workers
+	for i := 0; i < 5; i++ {
+		go d.processRideWorker(client, queueURL, i)
+	}
+
 	return nil
+}
+
+func (d *driverUseCase) processRideWorker(client *sqs.Client, queueURL string, workerID int) {
+	for msg := range rideChan {
+		var ride RideRequest
+		if err := json.Unmarshal([]byte(*msg.Body), &ride); err != nil {
+			log.Printf("[Worker %d] Invalid message: %v", workerID, err)
+			continue
+		}
+
+		log.Printf("[Worker %d] Processing ride %s", workerID, ride.RequestId)
+		d.processRide(ride)
+	}
 }
 
 func (d *driverUseCase) GetDriverByID(driverID int) (response.DriverResponseDTO, error) {

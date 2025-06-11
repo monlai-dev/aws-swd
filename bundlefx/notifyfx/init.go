@@ -17,6 +17,7 @@ var Module = fx.Options(
 		provideFirebaseClient,
 		provideNotifyUseCase,
 	),
+	fx.Invoke(http.RegisterNotifyRoutes),
 	fx.Invoke(usecase.INotifyUseCase.NotifyDriver),
 	fx.Invoke(usecase.INotifyUseCase.NotifyUser),
 	fx.Invoke(provideNotifyController),

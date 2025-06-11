@@ -199,7 +199,7 @@ func (d *driverUseCase) AcceptOrder(request request.AcceptOrderDTO) error {
 }
 
 func (d *driverUseCase) processRide(ride RideRequest) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	log.Printf("Processing ride request: %s for customer %d in region %s", ride.RequestId, ride.CustomerId, ride.RegionId)
@@ -251,7 +251,7 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 			defer sub.Close()
 
 			ch := sub.Channel()
-			timer := time.NewTimer(8 * time.Second)
+			timer := time.NewTimer(30 * time.Second)
 			defer timer.Stop()
 
 			select {

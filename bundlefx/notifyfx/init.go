@@ -22,6 +22,7 @@ var Module = fx.Options(
 	fx.Invoke(usecase.INotifyUseCase.NotifyDriver),
 	fx.Invoke(usecase.INotifyUseCase.NotifyUser),
 	fx.Invoke(http.RegisterNotifyRoutes),
+	fx.Invoke(usecase.INotifyUseCase.StartNotifyDriverWorker),
 )
 
 func provideRedisDB(lc fx.Lifecycle) *redis.Client {

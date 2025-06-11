@@ -37,6 +37,7 @@ type INotifyUseCase interface {
 	RegisterFcmToken(dto dto.RequestUpdateFcmTokenDTO) error
 	NotifyUser() error
 	GetFcmToken(role string, accountId int) (string, error)
+	StartNotifyDriverWorker()
 }
 
 type notifyUseCase struct {
@@ -123,7 +124,7 @@ func (n *notifyUseCase) NotifyUser() error {
 
 	go func() { // Start processing in a goroutine
 		for {
-			log.Println("Attempting to receive messages from the user queue...")
+
 			output, err := queueClient.ReceiveMessage(context.Background(), &sqs.ReceiveMessageInput{
 				QueueUrl:            &queueUrl,
 				MaxNumberOfMessages: 5,
@@ -135,7 +136,6 @@ func (n *notifyUseCase) NotifyUser() error {
 				continue
 			}
 
-			log.Printf("Received %d messages from the user queue.", len(output.Messages))
 			for _, msg := range output.Messages {
 				log.Printf("Processing message with ID: %s", *msg.MessageId)
 				var driverDTO dto.NotifyUserDTO
@@ -187,9 +187,9 @@ func (n *notifyUseCase) GetFcmToken(role string, accountId int) (string, error) 
 	return val, nil
 }
 
-func (n *notifyUseCase) startNotifyDriverWorker(poolSize int) {
+func (n *notifyUseCase) StartNotifyDriverWorker() {
 
-	poolSize = 5 // Default pool size if not set (hardcode ??!?!)
+	poolSize := 5 // Default pool size if not set (hardcode ??!?!)
 
 	for i := 0; i < poolSize; i++ {
 		go func(id int) {

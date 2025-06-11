@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -202,25 +203,28 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	log.Printf("Processing ride request: %s for customer %d in region %s", ride.RequestId, ride.CustomerId, ride.RegionId)
+	var logBuilder strings.Builder
+	logBuilder.WriteString(fmt.Sprintf("Processing ride request: %s for customer %d in region %s\n", ride.RequestId, ride.CustomerId, ride.RegionId))
 
 	regionID := ride.RegionId
 	redisKey := CacheKeyPrefix + "online_drivers:" + regionID
 
 	// 1. Get online drivers from Redis
-	log.Printf("Fetching online drivers for region %s", regionID)
+	logBuilder.WriteString(fmt.Sprintf("Fetching online drivers for region %s\n", regionID))
 	drivers, err := d.redis.SMembers(ctx, redisKey).Result()
 	if err != nil {
-		log.Printf("Failed to get drivers for region %s: %v", regionID, err)
+		logBuilder.WriteString(fmt.Sprintf("Failed to get drivers for region %s: %v\n", regionID, err))
+		log.Print(logBuilder.String())
 		return
 	}
 
 	if len(drivers) == 0 {
-		log.Printf("No available drivers in region %s for ride %s", regionID, ride.RequestId)
+		logBuilder.WriteString(fmt.Sprintf("No available drivers in region %s for ride %s\n", regionID, ride.RequestId))
+		log.Print(logBuilder.String())
 		return
 	}
 
-	log.Printf("Starting match for ride %s, %d drivers available", ride.RequestId, len(drivers))
+	logBuilder.WriteString(fmt.Sprintf("Starting match for ride %s, %d drivers available\n", ride.RequestId, len(drivers)))
 
 	userServiceURL := os.Getenv("USER_SERVICE_URL")
 	if userServiceURL == "" {
@@ -228,25 +232,27 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 	}
 
 	url := fmt.Sprintf("%s/customers/get-user-info/%d", userServiceURL, ride.CustomerId)
-	log.Printf("Fetching user info from URL: %s", url)
+	logBuilder.WriteString(fmt.Sprintf("Fetching user info from URL: %s\n", url))
 	account, err := d.fetchUserInfo(url)
 	if err != nil {
-		log.Printf("Error fetching user info for CustomerID %d: %v", ride.CustomerId, err)
+		logBuilder.WriteString(fmt.Sprintf("Error fetching user info for CustomerID %d: %v\n", ride.CustomerId, err))
+		log.Print(logBuilder.String())
 		return
 	}
 
 	for i, driverID := range drivers {
 		select {
 		case <-ctx.Done():
-			log.Printf("Global timeout reached for ride %s", ride.RequestId)
+			logBuilder.WriteString(fmt.Sprintf("Global timeout reached for ride %s\n", ride.RequestId))
+			log.Print(logBuilder.String())
 			return
 		default:
-			log.Printf("[Unix Timestamp: %d] Notifying driver %s (attempt %d)", time.Now().Unix(), driverID, i+1)
+			logBuilder.WriteString(fmt.Sprintf("[Unix Timestamp: %d] Notifying driver %s (attempt %d)\n", time.Now().Unix(), driverID, i+1))
 
 			d.notifyDriver(driverID, ride, account)
 
 			topic := CacheKeyPrefix + "accept_order:" + ride.RequestId
-			log.Printf("Subscribing to topic: %s", topic)
+			logBuilder.WriteString(fmt.Sprintf("Subscribing to topic: %s\n", topic))
 			sub := d.redis.Subscribe(ctx, topic)
 			defer sub.Close()
 
@@ -256,13 +262,14 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 
 			select {
 			case msg := <-ch:
-				log.Printf("Received message from topic %s: %s", topic, msg.Payload)
+				logBuilder.WriteString(fmt.Sprintf("Received message from topic %s: %s\n", topic, msg.Payload))
 				if msg.Payload == driverID {
-					log.Printf("Driver %s accepted the ride %s", driverID, ride.RequestId)
+					logBuilder.WriteString(fmt.Sprintf("Driver %s accepted the ride %s\n", driverID, ride.RequestId))
 					driverid, _ := strconv.Atoi(driverID)
 					driverInfo, err := d.driverRepo.GetByID(driverid)
 					if err != nil {
-						log.Printf("Failed to fetch driver info: %v", err)
+						logBuilder.WriteString(fmt.Sprintf("Failed to fetch driver info: %v\n", err))
+						log.Print(logBuilder.String())
 						return
 					}
 
@@ -280,26 +287,29 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 
 					payloadBytes, _ := json.Marshal(notifyPayload)
 
-					log.Printf("Sending NotifyUser message for ride %s to queue", ride.RequestId)
+					logBuilder.WriteString(fmt.Sprintf("Sending NotifyUser message for ride %s to queue\n", ride.RequestId))
 					_, err = queueClient.SendMessage(ctx, &sqs.SendMessageInput{
 						QueueUrl:    aws.String(os.Getenv("USER_QUEUE_URL")),
 						MessageBody: aws.String(string(payloadBytes)),
 					})
 					if err != nil {
-						log.Printf("Failed to publish NotifyUser message: %v", err)
+						logBuilder.WriteString(fmt.Sprintf("Failed to publish NotifyUser message: %v\n", err))
 					}
+					log.Print(logBuilder.String())
 					return
 				}
 			case <-timer.C:
-				log.Printf("Driver %s did not respond, trying next", driverID)
+				logBuilder.WriteString(fmt.Sprintf("Driver %s did not respond, trying next\n", driverID))
 			case <-ctx.Done():
-				log.Printf("Global timeout reached during driver wait for ride %s", ride.RequestId)
+				logBuilder.WriteString(fmt.Sprintf("Global timeout reached during driver wait for ride %s\n", ride.RequestId))
+				log.Print(logBuilder.String())
 				return
 			}
 		}
 	}
 
-	log.Printf("No driver accepted ride %s after checking all or timeout", ride.RequestId)
+	logBuilder.WriteString(fmt.Sprintf("No driver accepted ride %s after checking all or timeout\n", ride.RequestId))
+	log.Print(logBuilder.String())
 }
 
 func (d *driverUseCase) notifyDriver(driverId string, request RideRequest, customer AccountResponseDTO) {

@@ -16,11 +16,12 @@ var Module = fx.Options(
 		provideRedisDB,
 		provideFirebaseClient,
 		provideNotifyUseCase,
+		provideNotifyController,
 	),
-	fx.Invoke(http.RegisterNotifyRoutes),
+
 	fx.Invoke(usecase.INotifyUseCase.NotifyDriver),
 	fx.Invoke(usecase.INotifyUseCase.NotifyUser),
-	fx.Invoke(provideNotifyController),
+	fx.Invoke(http.RegisterNotifyRoutes),
 )
 
 func provideRedisDB(lc fx.Lifecycle) *redis.Client {

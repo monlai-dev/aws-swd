@@ -224,11 +224,10 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 
 	userServiceURL := os.Getenv("USER_SERVICE_URL")
 	if userServiceURL == "" {
-		log.Printf("USER_SERVICE_URL is not set")
-		return
+		userServiceURL = "localhost:8081"
 	}
 
-	url := fmt.Sprintf("%s/get-user-info/%d", userServiceURL, ride.CustomerId)
+	url := fmt.Sprintf("%s/customers/get-user-info/%d", userServiceURL, ride.CustomerId)
 	log.Printf("Fetching user info from URL: %s", url)
 	account, err := d.fetchUserInfo(url)
 	if err != nil {

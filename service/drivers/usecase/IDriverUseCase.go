@@ -124,17 +124,15 @@ func (d *driverUseCase) MatchingOrder() error {
 					log.Printf("Processing ride request: %s for customer %d in region %s", ride.RequestId, ride.CustomerId, ride.RegionId)
 
 					// Always delete the message after processing (even on failure)
-					defer func() {
-						_, err := client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
-							QueueUrl:      aws.String(queueURL),
-							ReceiptHandle: msg.ReceiptHandle,
-						})
-						if err != nil {
-							log.Printf("Delete failed: %v", err)
-						} else {
-							log.Printf("Message deleted: %s", ride.RequestId)
-						}
-					}()
+					_, err := client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+						QueueUrl:      aws.String(queueURL),
+						ReceiptHandle: msg.ReceiptHandle,
+					})
+					if err != nil {
+						log.Printf("Delete failed: %v", err)
+					} else {
+						log.Printf("Message deleted: %s", ride.RequestId)
+					}
 
 					// 🚀 Process the ride request
 					d.processRide(ride)

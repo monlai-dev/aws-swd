@@ -15,6 +15,7 @@ type ServerConfig struct {
 func NewGinEngine() *gin.Engine {
 	engine := gin.Default()
 	engine.Use(gin.Recovery())
+	engine.Use(CORSMiddleware())
 	return engine
 }
 
@@ -41,4 +42,17 @@ func StartHTTPServer(lc fx.Lifecycle, engine *gin.Engine, cfg ServerConfig) {
 			return nil
 		},
 	})
+}
+
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	}
 }

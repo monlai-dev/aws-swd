@@ -241,7 +241,7 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 			log.Printf("Global timeout reached for ride %s", ride.RequestId)
 			return
 		default:
-			log.Printf("Notifying driver %s (attempt %d)", driverID, i+1)
+			log.Printf("[Unix Timestamp: %d] Notifying driver %s (attempt %d)", time.Now().Unix(), driverID, i+1)
 
 			d.notifyDriver(driverID, ride, account)
 

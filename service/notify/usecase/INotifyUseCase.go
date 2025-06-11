@@ -58,7 +58,7 @@ func (n *notifyUseCase) NotifyDriver() error {
 
 	go func() { // Start processing in a goroutine
 		for {
-			log.Println("Attempting to receive messages from the queue...")
+
 			output, err := queueClient.ReceiveMessage(context.Background(), &sqs.ReceiveMessageInput{
 				QueueUrl:            &queueUrl,
 				MaxNumberOfMessages: 5,
@@ -70,7 +70,6 @@ func (n *notifyUseCase) NotifyDriver() error {
 				continue
 			}
 
-			log.Printf("Received %d messages from the queue.", len(output.Messages))
 			for _, msg := range output.Messages {
 				log.Printf("Processing message with ID: %s", *msg.MessageId)
 				var driverDTO dto.NotifyDriverDTO

@@ -154,8 +154,15 @@ func (c customerUseCase) GetAccountByID(id int) (response.AccountResponseDTO, er
 
 func (c customerUseCase) RequestRide(request request.RideRequestDTO) error {
 	ctx := context.Background()
+	dedupKey := CacheKeyPrefix + "active_ride:" + strconv.Itoa(request.UserId)
 
-	// Load AWS config
+	// Check for active ride
+	exists, _ := c.redisClient.Exists(ctx, dedupKey).Result()
+	if exists > 0 {
+		log.Printf("User %d already has an active ride request", request.UserId)
+		return errors.New("you already have a pending ride request")
+	}
+
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatalf("load config error: %v", err)
@@ -185,6 +192,13 @@ func (c customerUseCase) RequestRide(request request.RideRequestDTO) error {
 	if err != nil {
 		log.Printf("Failed to send message: %v", err)
 		return errors.New("failed to enqueue ride request")
+	}
+
+	// Set a temporary lock for deduplication (5 minutes)
+	if err := c.redisClient.Set(ctx, dedupKey, randomRequestID, 1*time.Minute).Err(); err != nil {
+		log.Printf("Failed to write deduplication key for user %d: %s", request.UserId, err)
+	} else {
+		log.Printf("Set deduplication key for user %d with ride ID %s", request.UserId, randomRequestID)
 	}
 
 	log.Printf("Ride request sent with ID: %s", randomRequestID)

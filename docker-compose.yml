@@ -2,7 +2,7 @@ version: '3.8'
 services:
   driver:
     image: monlaine123/monlai:latest
-    command: ["./main", "driver", "--port", "8082"]
+    command: [ "./main", "driver", "--port", "8082" ]
     ports:
       - "8082:8082"
     env_file:
@@ -10,8 +10,16 @@ services:
 
   customer:
     image: monlaine123/monlai:latest
-    command: ["./main", "customer", "--port", "8081"]
+    command: [ "./main", "customer", "--port", "8081" ]
     ports:
       - "8081:8081"
+    env_file:
+      - .env
+
+  notify:
+    image: monlaine123/monlai:latest
+    command: [ "./main", "notify", "--port", "8083" ]
+    ports:
+      - "8083:8083"
     env_file:
       - .env

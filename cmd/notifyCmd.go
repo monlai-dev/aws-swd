@@ -7,7 +7,7 @@ import (
 )
 
 func init() {
-	customerCmd.Flags().IntP("port", "p", 8082, "Port for notify service")
+	notifyCmd.Flags().IntP("port", "p", 8082, "Port for notify service")
 }
 
 var notifyCmd = &cobra.Command{

@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -63,7 +64,6 @@ const (
 
 var (
 	queueClient *sqs.Client
-	rideChan    = make(chan types.Message, 100)
 )
 
 func init() {
@@ -88,7 +88,10 @@ type driverUseCase struct {
 }
 
 func (d *driverUseCase) MatchingOrder() error {
+
 	ctx := context.Background()
+
+	// Load AWS config
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		log.Fatalf("load config error: %v", err)
@@ -97,7 +100,6 @@ func (d *driverUseCase) MatchingOrder() error {
 	client := sqs.NewFromConfig(cfg)
 	queueURL := os.Getenv("SQS_QUEUE_URL")
 
-	// Message polling goroutine
 	go func() {
 		for {
 			output, err := client.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
@@ -113,43 +115,34 @@ func (d *driverUseCase) MatchingOrder() error {
 			}
 
 			for _, msg := range output.Messages {
-				rideChan <- msg
-			}
+				go func(msg types.Message) {
+					var ride RideRequest
+					if err := json.Unmarshal([]byte(*msg.Body), &ride); err != nil {
+						log.Printf("Invalid message: %v", err)
+						return
+					}
 
-			// Delete messages after processing
-			if len(output.Messages) > 0 {
-				_, err := client.DeleteMessageBatch(ctx, &sqs.DeleteMessageBatchInput{
-					QueueUrl: aws.String(queueURL),
-					Entries:  make([]types.DeleteMessageBatchRequestEntry, len(output.Messages)),
-				})
-				if err != nil {
-					log.Printf("Failed to delete messages: %v", err)
-				} else {
-					log.Printf("Processed and deleted %d messages", len(output.Messages))
-				}
+					log.Printf("processing ride request: %s for customer %d in region %s", ride.RequestId, ride.CustomerId, ride.RegionId)
+
+					// 🚀 Process the ride request
+					d.processRide(ride)
+
+					// ✅ Delete message after successful processing
+					_, err := client.DeleteMessage(ctx, &sqs.DeleteMessageInput{
+						QueueUrl:      aws.String(queueURL),
+						ReceiptHandle: msg.ReceiptHandle,
+					})
+					if err != nil {
+						log.Printf("Delete failed: %v", err)
+					} else {
+						log.Printf("Message deleted: %s", ride.RequestId)
+					}
+				}(msg)
 			}
 		}
 	}()
 
-	// Start N workers
-	for i := 0; i < 5; i++ {
-		go d.processRideWorker(client, queueURL, i)
-	}
-
 	return nil
-}
-
-func (d *driverUseCase) processRideWorker(client *sqs.Client, queueURL string, workerID int) {
-	for msg := range rideChan {
-		var ride RideRequest
-		if err := json.Unmarshal([]byte(*msg.Body), &ride); err != nil {
-			log.Printf("[Worker %d] Invalid message: %v", workerID, err)
-			continue
-		}
-
-		log.Printf("[Worker %d] Processing ride %s", workerID, ride.RequestId)
-		d.processRide(ride)
-	}
 }
 
 func (d *driverUseCase) GetDriverByID(driverID int) (response.DriverResponseDTO, error) {
@@ -169,95 +162,113 @@ func (d *driverUseCase) GetDriverByID(driverID int) (response.DriverResponseDTO,
 }
 
 func (d *driverUseCase) RequestOnline(request request.OnlineRequestDTO) error {
+	log.Printf("Requesting driver %d to go online in region %d", request.DriverId, request.RegionId)
+
 	err := d.redis.SAdd(context.Background(), CacheKeyPrefix+"online_drivers:"+strconv.Itoa(request.RegionId), request.DriverId)
 	if err.Err() != nil {
-		log.Printf("Error adding driver to online list: %v", err.Err())
-		return errors.New("failed to add driver to online list: ")
+		log.Printf("Error adding driver %d to online list for region %d: %v", request.DriverId, request.RegionId, err.Err())
+		return errors.New("failed to add driver to online list")
 	}
 
+	log.Printf("Driver %d successfully added to online list for region %d", request.DriverId, request.RegionId)
 	return nil
 }
 
 func (d *driverUseCase) AcceptOrder(request request.AcceptOrderDTO) error {
+	log.Printf("Starting to process accept order for request ID: %s and driver ID: %d", request.RequestId, request.DriverId)
 
 	backOff := backoff.NewExponentialBackOff()
 	backOff.MaxElapsedTime = 2 * time.Second // Set a maximum retry duration
 	err := backoff.Retry(func() error {
+		log.Printf("Attempting to publish accept order message for request ID: %s", request.RequestId)
 		// Attempt to publish the message
 		err := d.redis.Publish(context.Background(), CacheKeyPrefix+"accept_order:"+request.RequestId, request.DriverId)
 		if err.Err() != nil {
-			log.Printf("Error publishing accept order message: %v", err.Err())
+			log.Printf("Error publishing accept order message for request ID: %s: %v", request.RequestId, err.Err())
 			return err.Err()
 		}
+		log.Printf("Successfully published accept order message for request ID: %s", request.RequestId)
 		return nil
 	}, backOff)
 	if err != nil {
-		log.Printf("Failed to publish accept order message after retries: %v", err)
+		log.Printf("Failed to publish accept order message for request ID: %s after retries: %v", request.RequestId, err)
 		return errors.New("failed to accept order")
 	}
 
+	log.Printf("Successfully processed accept order for request ID: %s and driver ID: %d", request.RequestId, request.DriverId)
 	return nil
 }
 
 func (d *driverUseCase) processRide(ride RideRequest) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
+
+	var logBuilder strings.Builder
+	defer func() {
+		log.Print(logBuilder.String())
+	}()
+
+	logBuilder.WriteString(fmt.Sprintf("Processing ride request: %s for customer %d in region %s\n", ride.RequestId, ride.CustomerId, ride.RegionId))
 
 	regionID := ride.RegionId
 	redisKey := CacheKeyPrefix + "online_drivers:" + regionID
 
 	// 1. Get online drivers from Redis
+	logBuilder.WriteString(fmt.Sprintf("Fetching online drivers for region %s\n", regionID))
 	drivers, err := d.redis.SMembers(ctx, redisKey).Result()
 	if err != nil {
-		log.Printf("Failed to get drivers for region %s: %v", regionID, err)
+		logBuilder.WriteString(fmt.Sprintf("Failed to get drivers for region %s: %v\n", regionID, err))
 		return
 	}
 
 	if len(drivers) == 0 {
-		log.Printf("No available drivers in region %s for ride %s", regionID, ride.RequestId)
+		logBuilder.WriteString(fmt.Sprintf("No available drivers in region %s for ride %s\n", regionID, ride.RequestId))
 		return
 	}
 
-	log.Printf("Starting match for ride %s, %d drivers available", ride.RequestId, len(drivers))
+	logBuilder.WriteString(fmt.Sprintf("Starting match for ride %s, %d drivers available\n", ride.RequestId, len(drivers)))
 
 	userServiceURL := os.Getenv("USER_SERVICE_URL")
 	if userServiceURL == "" {
-		log.Printf("USER_SERVICE_URL is not set")
-		return
+		userServiceURL = "localhost:8081"
 	}
 
-	url := fmt.Sprintf("%s/get-user-info/%d", userServiceURL, ride.CustomerId)
+	url := fmt.Sprintf("%s/customers/get-user-info/%d", userServiceURL, ride.CustomerId)
+	logBuilder.WriteString(fmt.Sprintf("Fetching user info from URL: %s\n", url))
 	account, err := d.fetchUserInfo(url)
 	if err != nil {
-		log.Printf("Error fetching user info for CustomerID %d: %v", ride.CustomerId, err)
+		logBuilder.WriteString(fmt.Sprintf("Error fetching user info for CustomerID %d: %v\n", ride.CustomerId, err))
 		return
 	}
 
 	for i, driverID := range drivers {
 		select {
 		case <-ctx.Done():
-			log.Printf("Global timeout reached for ride %s", ride.RequestId)
+			logBuilder.WriteString(fmt.Sprintf("Global timeout reached for ride %s\n", ride.RequestId))
 			return
 		default:
-			log.Printf("Notifying driver %s (attempt %d)", driverID, i+1)
+			logBuilder.WriteString(fmt.Sprintf("[Unix Timestamp: %d] Notifying driver %s (attempt %d)\n", time.Now().Unix(), driverID, i+1))
 
 			d.notifyDriver(driverID, ride, account)
 
 			topic := CacheKeyPrefix + "accept_order:" + ride.RequestId
+			logBuilder.WriteString(fmt.Sprintf("Subscribing to topic: %s\n", topic))
 			sub := d.redis.Subscribe(ctx, topic)
 			defer sub.Close()
 
 			ch := sub.Channel()
-			timer := time.NewTimer(8 * time.Second)
+			timer := time.NewTimer(30 * time.Second)
 			defer timer.Stop()
 
 			select {
 			case msg := <-ch:
+				logBuilder.WriteString(fmt.Sprintf("Received message from topic %s: %s\n", topic, msg.Payload))
 				if msg.Payload == driverID {
+					logBuilder.WriteString(fmt.Sprintf("Driver %s accepted the ride %s\n", driverID, ride.RequestId))
 					driverid, _ := strconv.Atoi(driverID)
 					driverInfo, err := d.driverRepo.GetByID(driverid)
 					if err != nil {
-						log.Printf("Failed to fetch driver info: %v", err)
+						logBuilder.WriteString(fmt.Sprintf("Failed to fetch driver info: %v\n", err))
 						return
 					}
 
@@ -275,33 +286,41 @@ func (d *driverUseCase) processRide(ride RideRequest) {
 
 					payloadBytes, _ := json.Marshal(notifyPayload)
 
+					logBuilder.WriteString(fmt.Sprintf("Sending NotifyUser message for ride %s to queue\n", ride.RequestId))
 					_, err = queueClient.SendMessage(ctx, &sqs.SendMessageInput{
 						QueueUrl:    aws.String(os.Getenv("USER_QUEUE_URL")),
 						MessageBody: aws.String(string(payloadBytes)),
 					})
 					if err != nil {
-						log.Printf("Failed to publish NotifyUser message: %v", err)
+						logBuilder.WriteString(fmt.Sprintf("Failed to publish NotifyUser message: %v\n", err))
 					}
 					return
 				}
 			case <-timer.C:
-				log.Printf("Driver %s did not respond, trying next", driverID)
+				logBuilder.WriteString(fmt.Sprintf("Driver %s did not respond, trying next\n", driverID))
 			case <-ctx.Done():
-				log.Printf("Global timeout reached during driver wait for ride %s", ride.RequestId)
+				logBuilder.WriteString(fmt.Sprintf("Global timeout reached during driver wait for ride %s\n", ride.RequestId))
 				return
 			}
 		}
 	}
 
-	log.Printf("No driver accepted ride %s after checking all or timeout", ride.RequestId)
+	logBuilder.WriteString(fmt.Sprintf("No driver accepted ride %s after checking all or timeout\n", ride.RequestId))
 }
 
 func (d *driverUseCase) notifyDriver(driverId string, request RideRequest, customer AccountResponseDTO) {
 	ctx := context.Background()
 
-	// Create notification payload
-	driverid, _ := strconv.Atoi(driverId)
+	log.Printf("Starting notification process for driver %s and request %s", driverId, request.RequestId)
 
+	// Create notification payload
+	driverid, err := strconv.Atoi(driverId)
+	if err != nil {
+		log.Printf("Failed to convert driverId %s to integer: %v", driverId, err)
+		return
+	}
+
+	log.Printf("Creating notification payload for driver %d", driverid)
 	notifyPayload := dto.NotifyDriverDTO{
 		DriverId:         driverid,
 		RequestId:        request.RequestId,
@@ -310,6 +329,7 @@ func (d *driverUseCase) notifyDriver(driverId string, request RideRequest, custo
 	}
 
 	// Convert payload to JSON
+	log.Printf("Marshalling notification payload to JSON")
 	payloadBytes, err := json.Marshal(notifyPayload)
 	if err != nil {
 		log.Printf("Failed to marshal notify payload: %v", err)
@@ -317,8 +337,15 @@ func (d *driverUseCase) notifyDriver(driverId string, request RideRequest, custo
 	}
 
 	// Send message to driver queue
+	queueURL := os.Getenv("DRIVER_QUEUE_URL")
+	if queueURL == "" {
+		log.Printf("DRIVER_QUEUE_URL environment variable is not set")
+		return
+	}
+
+	log.Printf("Sending notification to driver queue at URL: %s", queueURL)
 	_, err = queueClient.SendMessage(ctx, &sqs.SendMessageInput{
-		QueueUrl:    aws.String(os.Getenv("DRIVER_QUEUE_URL")),
+		QueueUrl:    aws.String(queueURL),
 		MessageBody: aws.String(string(payloadBytes)),
 	})
 	if err != nil {
@@ -326,7 +353,7 @@ func (d *driverUseCase) notifyDriver(driverId string, request RideRequest, custo
 		return
 	}
 
-	log.Printf("Notification sent to driver %s for request %s", driverId, request.RequestId)
+	log.Printf("Notification successfully sent to driver %s for request %s", driverId, request.RequestId)
 }
 
 func (d *driverUseCase) fetchUserInfo(url string) (AccountResponseDTO, error) {

@@ -8,5 +8,5 @@ import (
 func RegisterNotifyRoutes(engine *gin.Engine, controller *NotifyController) {
 	group := engine.Group("/notify")
 	group.POST("/register-fcm-token", controller.RegisterFcmTokenHandler)
-	engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	group.GET("/metrics", gin.WrapH(promhttp.Handler()))
 }

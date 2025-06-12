@@ -165,9 +165,11 @@ func (d *driverUseCase) RequestOnline(request request.OnlineRequestDTO) error {
 	log.Printf("Requesting driver %d to go online in region %d", request.DriverId, request.RegionId)
 
 	err := d.redis.SAdd(context.Background(), CacheKeyPrefix+"online_drivers:"+strconv.Itoa(request.RegionId), request.DriverId)
-	if err.Err() != nil {
+	if err.Err() == nil {
+		d.redis.Expire(context.Background(), CacheKeyPrefix+"online_drivers:"+strconv.Itoa(request.RegionId), 2*time.Minute)
+	} else {
 		log.Printf("Error adding driver %d to online list for region %d: %v", request.DriverId, request.RegionId, err.Err())
-		return errors.New("failed to add driver to online list")
+		return err.Err()
 	}
 
 	log.Printf("Driver %d successfully added to online list for region %d", request.DriverId, request.RegionId)
@@ -194,7 +196,6 @@ func (d *driverUseCase) AcceptOrder(request request.AcceptOrderDTO) error {
 		log.Printf("Failed to publish accept order message for request ID: %s after retries: %v", request.RequestId, err)
 		return errors.New("failed to accept order")
 	}
-
 	log.Printf("Successfully processed accept order for request ID: %s and driver ID: %d", request.RequestId, request.DriverId)
 	return nil
 }

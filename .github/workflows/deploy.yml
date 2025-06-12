@@ -105,7 +105,8 @@ jobs:
           sudo yum install -y jq || sudo apt-get install -y jq
           fi
           
-        
+          echo "🔐 Writing Firebase service account JSON file"
+          printf "%b" "$FIREBASE_SERVICE_ACCOUNT" > "$EC2_PROJECT_DIR/firebase-service-account.json"
 
           echo "🚀 Starting services using Docker Compose"
           docker-compose pull

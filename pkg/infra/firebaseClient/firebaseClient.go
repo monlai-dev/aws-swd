@@ -17,6 +17,8 @@ func ProvideFirebaseApp() *firebase.App {
 		log.Fatal("FIREBASE_CREDENTIALS_FILE not set")
 	}
 
+	log.Printf("invoke firebaseClient with credentials file: %s", credFile)
+
 	app, err := firebase.NewApp(ctx, nil, option.WithCredentialsFile(credFile))
 	if err != nil {
 		log.Fatalf("error initializing firebaseClient app: %v", err)

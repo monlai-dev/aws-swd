@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'notify-api-gateway'
+    metrics_path: /prod/notify/metrics
+    scheme: https
+    static_configs:
+      - targets: ['j14fhhydhf.execute-api.ap-southeast-2.amazonaws.com']

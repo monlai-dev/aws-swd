@@ -1,8 +1,6 @@
-// firebase-messaging-sw.js
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
 
-// Initialize Firebase in service worker
 firebase.initializeApp({
     apiKey: "AIzaSyAGrmgZPIZeO4yD1ng6RSyRu0GgapNB-YE",
     authDomain: "swptest-7f1bb.firebaseapp.com",
@@ -15,3 +13,16 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
+
+// 🔔 Handle background messages
+messaging.onBackgroundMessage((payload) => {
+    console.log('[firebase-messaging-sw.js] 📥 Received background message', payload);
+
+    const notificationTitle = payload.data.title || '🚖 New Notification';
+    const notificationOptions = {
+        body: payload.data.body || 'You have a new update!',
+        icon: 'https://www.shutterstock.com/image-vector/grab-car-icon-logo-simple-260nw-1258063429.jpg', // optional: add an icon
+    };
+
+    self.registration.showNotification(notificationTitle, notificationOptions);
+});

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/fx"
 	"log"
 )
@@ -16,6 +17,8 @@ func NewGinEngine() *gin.Engine {
 	engine := gin.Default()
 	engine.Use(gin.Recovery())
 	engine.Use(CORSMiddleware())
+
+	engine.GET("/metrics", gin.WrapH(promhttp.Handler()))
 	return engine
 }
 

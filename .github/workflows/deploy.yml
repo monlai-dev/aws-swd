@@ -89,7 +89,7 @@ jobs:
           USER_QUEUE_URL=$USER_QUEUE_URL
           DRIVER_QUEUE_URL=$DRIVER_QUEUE_URL
           
-          FIREBASE_CREDENTIALS_FILE=$EC2_PROJECT_DIR/firebase-service-account.json
+          FIREBASE_CREDENTIALS_FILE=/home/ec2-user/firebase/firebase-service-account.json
           
           # Internal service communication
           USER_SERVICE_URL=http://customer:8081
@@ -105,8 +105,7 @@ jobs:
           sudo yum install -y jq || sudo apt-get install -y jq
           fi
           
-          echo "🔐 Writing Firebase service account JSON file"
-          printf "%b" "$FIREBASE_SERVICE_ACCOUNT" > ~/firebase/firebase-service-account.json
+        
 
           echo "🚀 Starting services using Docker Compose"
           docker-compose pull

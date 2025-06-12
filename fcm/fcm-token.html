@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>FCM Token Logger</title>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js"></script>
+</head>
+<body>
+<h1>FCM Token Console Logger</h1>
+<p>Check your console for the token.</p>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyAGrmgZPIZeO4yD1ng6RSyRu0GgapNB-YE",
+        authDomain: "swptest-7f1bb.firebaseapp.com",
+        databaseURL: "https://swptest-7f1bb-default-rtdb.firebaseio.com",
+        projectId: "swptest-7f1bb",
+        storageBucket: "swptest-7f1bb.appspot.com",
+        messagingSenderId: "312264882389",
+        appId: "1:312264882389:web:cff6e4f72e3eb201518a5c",
+        measurementId: "G-5DFMCPBY4W"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('firebase-messaging-sw.js')
+            .then(async (registration) => {
+                console.log('✅ Service Worker registered:', registration);
+
+                const messaging = firebase.messaging(); // only call after registration
+
+                try {
+                    const permission = await Notification.requestPermission();
+                    if (permission !== 'granted') {
+                        console.warn('Notification permission not granted.');
+                        return;
+                    }
+
+                    const token = await messaging.getToken({
+                        vapidKey: "BM-qhNg_RRgcVwuaV2p33Ax0ZY7LwLM_Jz_Erbappmk4oc8cHGv2I-Iak4OImuH9gZzIvmmrcPk2vJduixMeUi0",
+                        serviceWorkerRegistration: registration
+                    });
+
+                    if (token) {
+                        console.log('✅ FCM Token:', token);
+                    } else {
+                        console.warn('⚠️ No token retrieved.');
+                    }
+                } catch (err) {
+                    console.error('❌ Error while getting token:', err);
+                }
+            })
+            .catch((err) => {
+                console.error('❌ Service Worker registration failed:', err);
+            });
+    } else {
+        console.error('❌ Service workers are not supported in this browser.');
+    }
+</script>
+</body>
+</html>

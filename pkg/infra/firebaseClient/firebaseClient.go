@@ -19,7 +19,9 @@ func ProvideFirebaseApp() *firebase.App {
 
 	log.Printf("invoke firebaseClient with credentials file: %s", credFile)
 
-	app, err := firebase.NewApp(ctx, nil, option.WithCredentialsFile(credFile))
+	app, err := firebase.NewApp(ctx, &firebase.Config{
+		ProjectID: "swptest-7f1bb",
+	}, option.WithCredentialsFile(credFile))
 	if err != nil {
 		log.Fatalf("error initializing firebaseClient app: %v", err)
 	}

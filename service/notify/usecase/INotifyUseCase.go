@@ -206,10 +206,9 @@ func (n *notifyUseCase) handleDriverNotification(msg dto.NotifyDriverDTO) {
 	ctx := context.Background()
 
 	log.Println("Initializing NotifyUseCase...")
-	usecase := NewNotifyUseCase(n.redis, n.firebaseClient)
 
 	log.Printf("Retrieving FCM token for driver ID %d...", msg.DriverId)
-	token, err := usecase.GetFcmToken("driver", msg.DriverId)
+	token, err := n.GetFcmToken("driver", msg.DriverId)
 	if err != nil {
 		log.Printf("Failed to get FCM token for driver %d: %v", msg.DriverId, err)
 		return

@@ -89,7 +89,7 @@ jobs:
           USER_QUEUE_URL=$USER_QUEUE_URL
           DRIVER_QUEUE_URL=$DRIVER_QUEUE_URL
           
-          FIREBASE_CREDENTIALS_FILE=/home/ec2-user/firebase/firebase-service-account.json
+          FIREBASE_CREDENTIALS_FILE=/firebase/firebase-service-account.json
           
           # Internal service communication
           USER_SERVICE_URL=http://customer:8081

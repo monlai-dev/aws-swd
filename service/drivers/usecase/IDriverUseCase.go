@@ -166,7 +166,7 @@ func (d *driverUseCase) RequestOnline(request request.OnlineRequestDTO) error {
 
 	err := d.redis.SAdd(context.Background(), CacheKeyPrefix+"online_drivers:"+strconv.Itoa(request.RegionId), request.DriverId)
 	if err.Err() == nil {
-		d.redis.Expire(context.Background(), CacheKeyPrefix+"online_drivers:"+strconv.Itoa(request.RegionId), 2*time.Minute)
+		d.redis.Expire(context.Background(), CacheKeyPrefix+"online_drivers:"+strconv.Itoa(request.RegionId), 20*time.Minute)
 	} else {
 		log.Printf("Error adding driver %d to online list for region %d: %v", request.DriverId, request.RegionId, err.Err())
 		return err.Err()
@@ -201,7 +201,7 @@ func (d *driverUseCase) AcceptOrder(request request.AcceptOrderDTO) error {
 }
 
 func (d *driverUseCase) processRide(ride RideRequest) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	var logBuilder strings.Builder
